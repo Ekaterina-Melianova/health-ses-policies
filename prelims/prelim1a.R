@@ -12,6 +12,7 @@ library(magrittr)
 library(stringr)
 library(hrbrthemes)
 library(heatmaply)
+library(lattice)
 
 # wd
 setwd("C:/Users/ru21406/YandexDisk/PhD Research/Data/Financial")
@@ -68,26 +69,26 @@ outturn_tmp <- lapply(1:length(outturn_tmp),
                       function(i) as.data.frame(outturn_tmp[[i]])[as.logical(replace(grepl("Total Expenditure",
                                                                                            colnames(outturn_tmp[[i]])), 1:5, 'TRUE'))])
 # renaming columns
+vars <- c('Code',
+          'local_authority',
+          'region',
+          'class',
+          'education',
+          'highways_transport',
+          'children_social_care',
+          'adult_social_care',
+          'public_health',
+          'housing',
+          'cultural',
+          'environmental',
+          'planning_development',
+          'police',
+          'fire_rescue',
+          'central',
+          'other',
+          'total')
 for (i in 1:length(outturn_tmp)){
-  colnames(outturn_tmp[[i]]) <- c('E-code',
-                     'Code',
-                     'local_authority',
-                     'region',
-                     'class',
-                     'education',
-                     'highways_transport',
-                     'children_social_care',
-                     'adult_social_care',
-                     'public_health',
-                     'housing',
-                     'cultural',
-                     'environmental',
-                     'planning_development',
-                     'police',
-                     'fire_rescue',
-                     'central',
-                     'other',
-                     'total')
+  colnames(outturn_tmp[[i]]) <- c('E-code', vars)
   
   outturn_tmp[[i]] <- outturn_tmp[[i]][rowSums(is.na(outturn_tmp[[i]])) != ncol(outturn_tmp[[i]]),]
   outturn_tmp[[i]]['year'] <- 2013 + i
@@ -134,47 +135,131 @@ df <- df %>% select(-region)
 df <- na.omit(df)
 summary(df)
 
-# selecting top districts by temporal sd in education outturns
-var_tab <- aggregate(education ~ Code, data = df, sd) %>%
-  arrange(desc(education)) %>% top_n(20, education)
-df_edu_top <- df %>% filter(Code %in% var_tab$Code)
+# norm by mean
+vars <- vars[-which(vars %in% c('Code', 'local_authority', 'class', 'region'))]
+df_normed <- df %>%
+  group_by(local_authority) %>%
+  mutate_at(vars, list(function(x) x/mean(x))) %>% 
+   # districts with zeros have no variance -> replacing with 0
+  mutate_at(vars, ~ replace(., is.nan(.), 0)) %>%
+  mutate_at(list(sd = sd), .vars = vars)
 
-# plotting
-ggplot(df_edu_top, aes(x = year, y = education, colour = local_authority,
-                       group = local_authority)) +
-  geom_line() + 
-  xlab("")  + 
-  xlab("Total expenditure in education per 1,000 people, base year = 2020")+ 
-  geom_point() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1)) 
+#-------- Education
+
+df_edu_sorted <- df_normed %>% arrange(desc(education_sd))
+top <- df_edu_sorted %>% distinct(local_authority, .keep_all = T) %>%
+  ungroup() %>%
+  top_n(30, education_sd)
+df_edu_sorted_top <- df_edu_sorted %>% filter(local_authority %in% top$local_authority)
+
+#-------- Public Health
+
+df_ph_sorted <- df_normed %>% # too many zeros (?)
+  filter(!public_health == 0 & !is.na(public_health)) %>% arrange(desc(public_health_sd))
+top <- df_ph_sorted %>% distinct(local_authority, .keep_all = T) %>%
+  ungroup() %>%
+  top_n(60, public_health_sd)
+df_ph_sorted_top <- df_ph_sorted %>% filter(local_authority %in% top$local_authority)
+
+#-------- Housing
+
+df_hs_sorted <- df_normed %>% # too many zeros (?)
+  filter(!housing == 0 & !is.na(housing)) %>% arrange(desc(public_health_sd))
+top <- df_hs_sorted %>% distinct(local_authority, .keep_all = T) %>%
+  ungroup() %>%
+  top_n(40, public_health_sd)
+df_hs_sorted_top <- df_hs_sorted %>% filter(local_authority %in% top$local_authority)
 
 #------------------------------- Heatmaps -------------------------------#
-mat <- as.matrix(mat)
-
+# Education
+mat_edu_ <- df_edu_sorted_top %>%
+  pivot_wider(id_cols = local_authority, 
+            names_from = year, values_from = education) %>% drop_na %>%
+  ungroup() %>% filter(!local_authority == 'Greater London Authority')
+mat_edu <- mat_edu_  %>%
+  select(-local_authority)
+mat_edu <- as.matrix(mat_edu)
+rownames(mat_edu) <- mat_edu_$local_authority
+  
 # Heatmap
-#d3heatmap(mat, scale="column", dendrogram = "none", width="800px", height="80Opx", colors = "Blues")
-
-p <- heatmaply(mat, 
-               dendrogram = "none",
+hm_edu <- heatmaply(mat_edu, 
                xlab = "", ylab = "", 
                main = "",
-               scale = "column",
-               margins = c(60,100,40,20),
+               margins = c(20,20,5,20),
                grid_color = "white",
-               grid_width = 0.00001,
+               grid_width = 0.00000001,
                titleX = FALSE,
                hide_colorbar = TRUE,
-               branches_lwd = 0.1,
-               label_names = c("Country", "Feature:", "Value"),
-               fontsize_row = 5, fontsize_col = 5,
-               labCol = colnames(mat),
-               labRow = rownames(mat),
+               branches_lwd = 0.001,
+               label_names = c("Local Authority", "Year", "Outturn, normed"),
+               fontsize_row = 5, fontsize_col = 10,
+               labCol = colnames(mat_edu),
+               labRow = rownames(mat_edu),
                heatmap_layers = theme(axis.line=element_blank())
 )
+hm_edu
 
+# Public Health
+mat_ph_ <- df_ph_sorted_top %>%
+  pivot_wider(id_cols = local_authority, 
+              names_from = year, values_from = public_health) %>%
+  # replacing NA since some districts were not present for all years
+  mutate_at(vars(-group_cols()), ~ replace(., is.na(.), 0)) %>%
+  filter_all(all_vars(. != 0)) %>%
+  ungroup() %>% filter(!local_authority == 'Greater London Authority')
+mat_ph <- mat_ph_  %>%
+  select(-local_authority)
+mat_ph <- as.matrix(mat_ph)
+rownames(mat_ph) <- mat_ph_$local_authority
 
+# Heatmap
+hm_ph <- heatmaply(mat_ph, 
+                    xlab = "", ylab = "", 
+                    main = "",
+                    margins = c(0,0,0,0),
+                    grid_color = "white",
+                    grid_width = 0.00000001,
+                    titleX = FALSE,
+                    hide_colorbar = TRUE,
+                    branches_lwd = 0.001,
+                    label_names = c("Local Authority", "Year", "Outturn, normed"),
+                    fontsize_row = 5, fontsize_col = 10,
+                    labCol = colnames(mat_ph),
+                    labRow = rownames(mat_ph),
+                    heatmap_layers = theme(axis.line=element_blank())
+)
+hm_ph
 
+# Housing
+mat_hs_ <- df_hs_sorted_top %>%
+  pivot_wider(id_cols = local_authority, 
+              names_from = year, values_from = housing) %>%
+  # replacing NA since some districts were not present for all years
+  mutate_at(vars(-group_cols()), ~ replace(., is.na(.), 0)) %>%
+  filter_all(all_vars(. != 0)) %>%
+  ungroup() %>% filter(!local_authority == 'Greater London Authority')
+mat_hs <- mat_hs_  %>%
+  select(-local_authority)
+mat_hs <- as.matrix(mat_hs)
+rownames(mat_hs) <- mat_hs_$local_authority
 
+# Heatmap
+hm_hs <- heatmaply(mat_hs, 
+                   xlab = "", ylab = "", 
+                   main = "",
+                   margins = c(20,20,5,20),
+                   grid_color = "white",
+                   grid_width = 0.00000001,
+                   titleX = FALSE,
+                   hide_colorbar = TRUE,
+                   branches_lwd = 0.001,
+                   label_names = c("Local Authority", "Year", "Outturn, normed"),
+                   fontsize_row = 5, fontsize_col = 10,
+                   labCol = colnames(mat_hs),
+                   labRow = rownames(mat_hs),
+                   heatmap_layers = theme(axis.line=element_blank())
+)
+hm_hs
 
 
 
