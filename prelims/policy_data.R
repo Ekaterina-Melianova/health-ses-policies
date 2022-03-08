@@ -45,7 +45,7 @@ year_seq <- seq(2007, 2020)
 list_df <- vector("list", length(year_seq))
 
 # downloading excel files with individual local authority outturn data from gov.uk
-for (i in 1:length(sites)){
+for (i in seq_along(list_df)){
   
   # extracting links with files
     html <- paste(readLines(sites[i]), collapse="\n")
@@ -57,6 +57,8 @@ for (i in 1:length(sites)){
       
     }
     links <- matched[[1]][, 2]
+    
+    sheet_vec <- c()
     
  # storing files in folders by years   
    for (j in 1:length(links)){ 
@@ -77,13 +79,17 @@ for (i in 1:length(sites)){
       sheet_to_import <- list_ods_sheets(path)
       sheet_to_import <- sheet_to_import[which(!sheet_to_import == 'Col refs')][3]
       list_df[[i]][[j]] <- read_ods(path,  sheet = sheet_to_import)
+      
       } else {
         sheet_to_import <- excel_sheets(path)
         sheet_to_import <- sheet_to_import[which(!sheet_to_import == 'Col refs')][3]
         list_df[[i]][[j]] <- read_excel(path,  sheet = sheet_to_import)
-        }
+        
+      }
+    sheet_vec <- c(sheet_vec, sheet_to_import)
+    
   }
-
+    names(list_df[[i]]) <- sheet_vec
 }
 
 # unifying the class of tables
@@ -133,6 +139,10 @@ for (i in seq_along(list_df)){
   # cleaning 
   text_vec <- gsub("\\d+", "", text_vec)
   text_vec <- as.data.frame(text_vec[!is.na(text_vec)& text_vec!= ''])
+  
+  # adding a year and file name
+  text_vec <- as.character(unlist(c(year_seq[i], names(list_df[[i]][j]), text_vec)))
+  
   policy_names_raw_ <- cbind.fill(policy_names_raw_, text_vec)
   
   print(c(i,j))
