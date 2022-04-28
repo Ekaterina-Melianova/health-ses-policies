@@ -556,7 +556,7 @@ table(RSX_RG$class, RSX_RG$year)
 table(RSX_RG_long[RSX_RG_long$class %in% c('L', 'MD', 'SC', 'UA'), 'class'],
       RSX_RG_long[RSX_RG_long$class %in% c('L', 'MD', 'SC', 'UA'), 'year'])
 
-# Replacing missing values with the moving average
+# Replacing missing values with moving average
 
 # Isles of Scilly 2016
 # Reading UA 2020

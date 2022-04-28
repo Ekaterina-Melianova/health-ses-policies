@@ -127,7 +127,7 @@ summary(model.2)
 socdem = c('sex', 'employ', 'marstat', 'ethn_dv', 'urban_dv', 'dvage')
 vars_selected = c(GHQ, socdem, 'SRH')
 ids = c('id', 'LAD21CD', 'la', 'wave')
-sub = sub %>% filter(across(all_of(vars_selected), function(x) !x == -8))
+sub = sub %>% filter(across(all_of(vars_selected), function(x) !x %in% c(-8, -7)))
 for (i in vars){
   sub[, i] = ifelse(sub[, i] < 0, NA, sub[, i])
 }
@@ -140,44 +140,45 @@ a.out <- amelia(sub, m = 5,
                 idvars = ids,
                 noms = socdem[-length(socdem)],
                 ords = c(GHQ, 'SRH', 'dvage'))
-dt <- a.out$imputations$imp3
+df <- a.out$imputations$imp3
 
-summary(dt)
-table(dt$scghqc)
+summary(df)
+table(df$scghqc)
 
 # reverse coding
-# table(dt$scghqa)
+# table(df$scghqa)
 # vars_to_recode = c('scghqa', 'scghqc', 'scghqd', 'scghqg', 'scghqh', 'scghql')
 # keys = rep(1, length(GHQ))
 # keys[which(GHQ %in% vars_to_recode)] = -1
-# dt[, GHQ] = psych::reverse.code(keys, dt[,GHQ])
-# table(dt$scghqa)
+# df[, GHQ] = psych::reverse.code(keys, df[,GHQ])
+# table(df$scghqa)
 
 # constructing a measure of psychological distress
 model = '
-GHQ =~ scghqa + scghqb + scghqc + scghqd + scghqe + scghqf + scghqg + scghqh + scghqi + scghqj + 1*scghqk + scghql
+GHQ =~ scghqb + scghqc + scghqd + scghqe + scghqf + scghqg + scghqh + scghqi + scghqj + scghqk + scghql
 '
-fit = cfa(model, cluster = 'id', data = dt)
+fit = cfa(model, cluster = 'id', data = df, std.lv = T)
 summary(fit, fit.measures = T, standardized = T)
 
 model = '
-GHQ =~ scghqb + scghqe + scghqf + 1*scghqi + scghqj + scghqk
+GHQ =~ scghqb + scghqe + scghqf + scghqi + scghqj + scghqk
 '
-fit = cfa(model, cluster = 'id', data = dt, estimator = 'ML')
+fit = cfa(model, cluster = 'id', data = df, std.lv = T,
+          missing = 'fiml')
 summary(fit, fit.measures = T, standardized = T)
 
 # predict GHQ values
-dt$GHQ = lavPredict(fit)
+df$GHQ = lavPredict(fit)
 
 # look at the distribution
-hist(dt[dt$year == 2013, 'GHQ'])
-hist(dt[dt$year == 2014, 'GHQ'])
-hist(dt[dt$year == 2015, 'GHQ'])
-hist(dt[dt$year == 2016, 'GHQ'])
-hist(dt[dt$year == 2017, 'GHQ'])
-hist(dt[dt$year == 2018, 'GHQ'])
-hist(dt[dt$year == 2019, 'GHQ'])
-hist(dt[dt$year == 2020, 'GHQ'])
+hist(df[df$year == 2013, 'GHQ'])
+hist(df[df$year == 2014, 'GHQ'])
+hist(df[df$year == 2015, 'GHQ'])
+hist(df[df$year == 2016, 'GHQ'])
+hist(df[df$year == 2017, 'GHQ'])
+hist(df[df$year == 2018, 'GHQ'])
+hist(df[df$year == 2019, 'GHQ'])
+hist(df[df$year == 2020, 'GHQ'])
 
 
 
