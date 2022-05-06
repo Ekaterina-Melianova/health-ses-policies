@@ -19,7 +19,7 @@ library(feisr)
 #library(pracma)
 library(moderndive) 
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/prelims/functions.r')
+#source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/prelims/functions.r')
 
 # policies
 RSX_RG = readRDS(paste0("C:/Users/", Sys.getenv("USERNAME"), '/YandexDisk/PhD Research/Data/Financial/RSX_RG.RData'))
@@ -76,8 +76,6 @@ health = health_raw %>% filter(Sex == 'Persons' #& Age %in% c('18+ yrs', '16+ yr
   filter(grepl('E', UTLACD) & nchar(UTLACD) == 9)
 unique(health$IndicatorName)
 
-#mis = health_raw %>% filter(IndicatorID == 93088 & grepl('Tyneside', AreaName))
-
 # renaming
 names = c('CHD',
           'depression',
@@ -105,19 +103,16 @@ for (i in seq_along(split_list)){
   colnames(split_list[[i]])[colnames(split_list[[i]]) == 'Value'] =
     unique(split_list[[i]][, 'names'])
   
-  split_list[[i]] = split_list[[i]] %>% select(-names)
-  
-  #if (i %in% seq_along(split_list)[-length(split_list)]){
-  #  split_list[[i]] = split_list[[i]] %>% select(-AreaName)
-  #}
+  split_list[[i]] = split_list[[i]] %>% dplyr::select(-names)
 }
 
 health_df = purrr::reduce(split_list, full_join, by = c('year', 'UTLACD'))
 AreaName_vars = names(health_df)[grepl('AreaName', names(health_df))]
 health_df = cbind(health_df, AreaName = apply(health_df[,AreaName_vars], 1, max, na.rm=T))
 health_df = health_df %>% select(!!-AreaName_vars)
+#health_df = unique(health_df)
 
-#h = split_list[[4]]
+#h = split_list[[7]]
 # Deprivation Index
 deprivation_2015 = deprivation_decile('202', 2015)
 deprivation_2019 = deprivation_decile('202', 2019)
@@ -145,7 +140,7 @@ RSX_RG[RSX_RG$la == 'Poole UA', 'UTLACD'] = 'E06000029'
 health_df[health_df$UTLACD %in% c('E07000049', 'E07000050'), 'UTLACD'] = 'E07000052'
 health_df = health_df %>%
   group_by(year, UTLACD) %>%
-  mutate(d = mean(depression, na.rm = T),
+  dplyr::mutate(d = mean(depression, na.rm = T),
          s = mean(suicide, na.rm = T),
          u = mean(unemploy, na.rm = T),
          e = mean(earnings_weekly, na.rm = T),
@@ -165,8 +160,6 @@ for (i in 1:nrow(keys)){
 health_df = health_df %>% 
   filter(!AreaName %in% c('East Dorset', 'North Dorset'))
 
-#j = 2013
-#i = 'depression'
 dr = health_df
 for (i in names[,2]){
   for (j in 2013:2020){
@@ -226,7 +219,6 @@ df[df$UTLACD %in% c('E06000029', 'E06000028'), 'IMDscore'] =
 # Isles of Scilly and Cornwall 
 # remove for now
 df = df[!df$UTLACD %in% c('E06000053', 'E09000001'),]
-#test = health_raw[health_raw$IndicatorName == 'Suicide rate' & health_raw$AreaName == 'Blackpool',]
 
 # the rest missing (recent 2019-2020 data primarily) replace with moving average
 #df[, names$names] = na_ma(df[, names$names], weighting = 'simple')
@@ -298,26 +290,37 @@ panel_df %>%
 df$time = df$year - 2013
 df = df %>% dplyr::rename(income = earnings_weekly, id = UTLACD)
 
-df = df[, c('id', 'time',
-            'skills_funding',
-            'public_health',
-            'satisfaction',
-            'depression',
-            'CHD',
-            'income',
-            'IMDscore')]
+selected = c('skills_funding',
+             'public_health',
+             'highways_transport',
+             'adult_social_care',
+             'housing',
+             'cultural',
+             'environmental',
+             'planning_development',
+             'police',
+             'central',
+             'fire_rescue',
+             'satisfaction',
+             'depression',
+             'CHD',
+             'income',
+             'unemploy',
+             'IMDscore')
+
+df = df[, c('id', 'time', selected)]
 
 # Scaling
-df[, c('skills_funding', 'public_health', 'satisfaction', 'depression', 'CHD', 'income', 'IMDscore')] =
-  scale(df[, c('skills_funding', 'public_health', 'satisfaction', 'depression', 'CHD', 'income', 'IMDscore')])
+df[, selected] = scale(df[, selected])
 summary(df)
 
 # de-trending
 vars_to_detrend = names(df[, !names(df) %in% c('time', 'id', 'IMDscore')])
 
-# detrending function
-detrended = list()
+# function
+
 DetrendPanel = function(vars = NULL, id = id, time = time, data = df){
+  detrended = list()
   for (i in vars){
       detrended[[which(vars == i)]] = left_join(get_regression_points(lm(as.formula(paste(i, '~ id*time')), data = df)) %>% 
                     select(id, time, residual),
@@ -345,18 +348,40 @@ id_skills = df[df$time == 7, c('skills_funding_det', 'id')] %>% arrange(skills_f
 df = df %>% filter(!id %in% id_skills$id)
 
 # Model
-nlatent = 4
-nmanifest = 4
+#nlatent = 4
+#nmanifest = 4
+#tpoints = length(unique(df$time))
+#latentNames = paste0("eta", 1:nlatent)
+#manifestNames = c('skills_funding_det', 'public_health_det',
+#                  'unemploy_det', 'depression_det')
+#manifestNames = c('skills_funding', 'public_health',
+#                  'unemploy', 'depression')
+#
+#A <- matrix(c( "pskill_drift", 0, 'inc_pskill', 0,
+#               0, 'phealth_drift', 0, 'health_phealth',
+#               'pskill_inc', 0, 'inc_drift', 'health_inc',
+#               0, 'phealth_health', 'inc_health', 'health_drift'),
+#            nrow = nlatent, ncol = nlatent)
+
+manifestNames = paste0(selected[!selected %in% 
+                                  c('satisfaction', 'CHD',
+                                    'unemploy', 'IMDscore')], '_det')
+nlatent = length(manifestNames)
+nmanifest = length(manifestNames)
 tpoints = length(unique(df$time))
 latentNames = paste0("eta", 1:nlatent)
-manifestNames = c('skills_funding_det', 'public_health_det',
-                  'income_det', 'CHD_det')
 
-A <- matrix(c( "pskill_drift", 0, 'inc_pskill', 0,
-               0, 'phealth_drift', 0, 'health_phealth',
-               'pskill_inc', 0, 'inc_drift', 'health_inc',
-               0, 'phealth_health', 'inc_health', 'health_drift'),
-            nrow = nlatent, ncol = nlatent)
+A = matrix(0, nrow = nlatent, ncol = nlatent)
+A[,which(manifestNames == 'depression_det')] = substr(manifestNames, 1, 4)
+A[which(manifestNames == 'skills_funding_det'),
+    which(manifestNames == 'income_det')] = 'skil2'
+A[which(manifestNames == 'depression_det'),
+    which(manifestNames %in% c('public_health_det', 'adult_social_care_det'))] = c('depr1', 'depr2')
+A[which(manifestNames == 'income_det'),
+    which(manifestNames == 'skills_funding_det')] = 'inco1'
+for (i in 1:nlatent){
+  A[i,i] = letters[i]
+}
 
 fullm = ctModel(Tpoints = tpoints, 
                 n.latent = nlatent,
@@ -373,9 +398,9 @@ fullm = ctModel(Tpoints = tpoints,
                 type = "stanct" 
 )
 
-pars_tab = fullm$pars
-ctModelLatex(fullm)
-
+#pars_tab = fullm$pars
+#ctModelLatex(fullm)
+#full_est = simfit
 # running the model
 start <- Sys.time()
 set.seed(1234)
@@ -414,8 +439,11 @@ setnames(dt, old = c('value','Time interval','row'),
 
 dt[,`Years since shock` := as.numeric(`Years since shock`)]
 
+dt_sub = dt[dt$col %in% c('Shock to eta1', 'Shock to eta2',
+                          'Shock to eta3', 'Shock to eta4'),]
+dt_sub = dt_sub[dt_sub$Variable %in% c('eta1', 'eta2', 'eta3', 'eta4', 'eta12', 'eta13'),]
 #pdf('dtplot.pdf', height = 5)
-ggplot(dt, aes(y = `Expected change`,
+ggplot(dt_sub, aes(y = `Expected change`,
                x = `Years since shock`,
                colour = Variable,
                fill = Variable)) +
@@ -428,11 +456,11 @@ ggplot(dt, aes(y = `Expected change`,
 #dev.off()
 
 ## depression separately
-dt_sub = dt[dt$col == 'Shock to eta3',]
-dt_sub = dt_sub %>% filter(Variable %in% c('eta3', 'eta4'))
+dt_sub = dt[dt$col == 'Shock to eta1',]
+dt_sub = dt_sub %>% filter(Variable %in% c('eta1', 'eta12', 'eta13'))
 
 dt_sub = dt[dt$col == 'Shock to eta2',]
-dt_sub = dt_sub %>% filter(Variable %in% c('eta2', 'eta4'))
+dt_sub = dt_sub %>% filter(Variable %in% c('eta2', 'eta12', 'eta13'))
 
 ggplot(dt_sub,aes(y = `Expected change`, x = `Years since shock`, 
               colour = Variable, fill = Variable)) +
@@ -449,24 +477,6 @@ ctKalman(simfit, plot=TRUE, #smoothed (conditioned on all time points) latent st
 
 ### LaTex model
 ctModelLatex(fullm)
-
-### funding -> income -> health
-IE_CI <- sapply(dts,function(dt){
-  getCIs(post_drift,simplify=TRUE, FUN=ctnet::IE,  dt = dt, IV = 1, DV = 4, M = 3)
-}, simplify = "array")
-
-plot.new()
-plot.window(xlim = c(0,7), ylim = c(-0.01, 0.01))
-axis(1); axis(2)
-abline(h = 0)
-title("Path-Specific Effects across Time-Intervals", xlab = "Time-Interval", ylab = "Coefficient")
-#lines(dts, TE_CI[2,], col = "purple", lty = 1)
-#lines(dts, TE_CI[1,], col = "purple", lty = 2); lines(dts, TE_CI[3,], col = "purple", lty = 2)
-#lines(dts, DE_CI[2,], col = "orange", lty = 1)
-#lines(dts, DE_CI[1,], col = "orange", lty = 2); lines(dts, DE_CI[3,], col = "orange", lty = 2)
-lines(dts, IE_CI[2,], col = "darkgreen", lty = 1)
-lines(dts, IE_CI[1,], col = "darkgreen", lty = 2); lines(dts, IE_CI[3,], col = "darkgreen", lty = 2)
-
 
 ### lagged effects
 dts = seq(0, 7)
@@ -490,3 +500,19 @@ plotPhi(CI_obj = phidt_CI, dts = dts,  index = matrix(c(3,4), nrow = 1))
 ### skills_funding -> income
 plotPhi(CI_obj = phidt_CI, dts = dts,  index = matrix(c(1,3), nrow = 1)) 
 
+### funding -> income -> health
+IE_CI <- sapply(dts,function(dt){
+  getCIs(post_drift,simplify=TRUE, FUN=ctnet::IE,  dt = dt, IV = 1, DV = 4, M = 3)
+}, simplify = "array")
+
+plot.new()
+plot.window(xlim = c(0,7), ylim = c(-0.02, 0.02))
+axis(1); axis(2)
+abline(h = 0)
+title("Path-Specific Effects across Time-Intervals", xlab = "Time-Interval", ylab = "Coefficient")
+#lines(dts, TE_CI[2,], col = "purple", lty = 1)
+#lines(dts, TE_CI[1,], col = "purple", lty = 2); lines(dts, TE_CI[3,], col = "purple", lty = 2)
+#lines(dts, DE_CI[2,], col = "orange", lty = 1)
+#lines(dts, DE_CI[1,], col = "orange", lty = 2); lines(dts, DE_CI[3,], col = "orange", lty = 2)
+lines(dts, IE_CI[2,], col = "darkgreen", lty = 1)
+lines(dts, IE_CI[1,], col = "darkgreen", lty = 2); lines(dts, IE_CI[3,], col = "darkgreen", lty = 2)

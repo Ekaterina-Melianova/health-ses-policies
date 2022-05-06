@@ -1,5 +1,6 @@
  
-library(plyr); library(dplyr)
+library(plyr, exclude = 'mutate'); library(dplyr)
+library(dplyr)
 library(tidyr)
 library(readxl)
 library(stringr)
@@ -295,7 +296,11 @@ RSX_RG[, c(general_policies, grant_policies)] =
 RSX_RG = RSX_RG %>% select(-c(other, total))
 policies = c(general_policies[!general_policies %in% c('other', 'total')], grant_policies)
 
-# Dealing with London Boroughs
+
+
+#------------------------------------ London Boroughs
+
+
 
 Greater_London = RSX_RG[grepl('greater london', RSX_RG[,'la'], ignore.case = T),]
 Greater_London = Greater_London %>% 
@@ -321,12 +326,72 @@ London = London %>% dplyr::rename(police_fin = 'police',
 # remove Greater London from the main df
 RSX_RG = RSX_RG %>% filter(!grepl('greater london', RSX_RG$la, ignore.case = T))
 
-##### Dealing with Combined Authorities
+
+
+#------------------------------------ Waste and Park Authorities
+
+
+
+#LAD_park = RSX_RG %>% filter(grepl('park', la, ignore.case = T)) %>% 
+#  select(LAD) %>% distinct()
+#park = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/NSPL_FEB_2022_UK.csv') %>%
+#  select(cty, park)
+#park_selected = park %>% filter(park %in% LAD_park$LAD) %>% distinct()
+#saveRDS(park_selected, 'park_selected.rds')
+
+# loading keys
+waste = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/waste_park.xlsx')
+park = readRDS('park_selected.rds')
+
+# creating a column with keys for waste and park
+for (i in 1:nrow(waste)){
+  row = RSX_RG$la %in% unlist(strsplit(waste$la[i], ', '))
+  RSX_RG[which(row), 'waste_park'] = waste$LAD[i]
+}
+for (i in 1:nrow(park)){
+  row = RSX_RG$LAD  == park$cty[i]
+  RSX_RG[which(row), 'waste_park'] = park$park[i]
+}
+
+# subsetting waste and park authorities
+waste_park_Authorities = RSX_RG[grepl('waste|park', RSX_RG$la, ignore.case = T),]
+waste_park_Authorities = waste_park_Authorities %>% 
+  dplyr::select(all_of(c(policies, 'year', 'LAD'))) %>%
+  dplyr::rename_at(all_of(policies), function(x) paste0(x, '_wp'))
+
+# margins
+RSX_RG %<>% group_by(year, waste_park) %>%
+  dplyr::mutate(margins_waste_park = population/sum(population)) 
+
+# merging the main df with the subset
+RSX_RG = RSX_RG %>%
+  left_join(waste_park_Authorities, by = c('year', 'waste_park' = 'LAD')) %>%
+  ungroup()
+
+# replace NA with 0
+names_wp = names(RSX_RG %>% select(ends_with('_wp'), margins_waste_park))
+logical = is.na(RSX_RG[, names_wp])
+for (x in 1:length(names_wp)){
+  RSX_RG[logical[, x], names_wp[x]] = 0
+}
+
+# computing the outturns
+RSX_RG[, policies] = (RSX_RG[, policies] + t(RSX_RG[,"margins_waste_park"])*(RSX_RG %>% select(ends_with('_wp'))))
+RSX_RG = RSX_RG %>% select(!c(ends_with('_wp'), margins_waste_park, waste_park))
+
+# removing waste and park authorities
+RSX_RG = RSX_RG %>% filter(!grepl('waste|park', RSX_RG$la, ignore.case = T))
+
+
+
+#------------------------------------ Combined Authorities
+
+
 
 # special case - The Broads Authority (Norfolk + Suffolk)
 broads_code = unique(RSX_RG[grepl('Broads', RSX_RG$la, ignore.case = T), 'LAD'])
 RSX_RG$CAUTHCD = ifelse(!RSX_RG$class == 'O' & grepl('Norfolk|Suffolk', RSX_RG$la, ignore.case = T), broads_code, 
-                     RSX_RG$CAUTHCD)
+                        RSX_RG$CAUTHCD)
 
 # the rest
 Combined_Authorities = RSX_RG[grepl('combined authority|broads', RSX_RG$la, ignore.case = T),]
@@ -352,10 +417,11 @@ CA = CA %>% select(!c(ends_with('_ca'), margins_comb))
 # remove CAs
 RSX_RG = RSX_RG %>% filter(!grepl('combined authority|broads', RSX_RG$la, ignore.case = T))
 
-##### Dealing with Police, Fire, Waste, Park, and Transport Authorities
 
-# Didn't find Waste, Park, and Transport Authorities - filter them out for now
-RSX_RG = RSX_RG %>% filter(!grepl('waste|transport|park', la, ignore.case = T))
+
+#------------------------------------ Police Authorities
+
+
 
 # keys for police
 la_police = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/la_police_fire.xlsx',
@@ -421,6 +487,11 @@ as.data.frame(table(RSX_RG[is.na(RSX_RG$PLAD), 'class'])) # 233 Fire Authorities
 # ungrouping 
 RSX_RG = RSX_RG %>%
   ungroup()
+
+
+
+#------------------------------------ Fire Authorities
+
 
 
 ###### keys for fire
@@ -509,7 +580,12 @@ RSX_RG = RSX_RG %>% group_by(FLAD, year) %>%
 RSX_RG[, "fire_rescue_fin"] = (t(RSX_RG[, "margins_fire"])*RSX_RG[, "fire_rescue"]) +
   RSX_RG[, 'fire_rescue_lower']
 
-# bringing London Boroughs and Combined Authorities back to the main df
+
+
+#------------------ London Boroughs and Combined Authorities back to the main df
+
+
+
 RSX_RG = as.data.frame(RSX_RG)
 CA = as.data.frame(CA)
 
@@ -556,7 +632,7 @@ table(RSX_RG$class, RSX_RG$year)
 table(RSX_RG_long[RSX_RG_long$class %in% c('L', 'MD', 'SC', 'UA'), 'class'],
       RSX_RG_long[RSX_RG_long$class %in% c('L', 'MD', 'SC', 'UA'), 'year'])
 
-# Replacing missing values with moving average
+# replacing missing values with moving average
 
 # Isles of Scilly 2016
 # Reading UA 2020
@@ -582,7 +658,11 @@ for (i in 1:nrow(RSX_RG)){
   }
 
 
-# deflator
+
+#-------------------------- deflator
+
+
+
 deflator = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/Financial/GDP_Deflators_Budget_March_2021_update.xlsx',
                        range = 'H7:I73')
 names(deflator) = c('year', 'def')
