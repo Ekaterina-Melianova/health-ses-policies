@@ -14,7 +14,7 @@ library(ggplot2)
 library(ggpubr)
 library(stargazer)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/prelims/syntax_rigclm.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=600)
 
 wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data/Spending'

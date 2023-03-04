@@ -10,7 +10,7 @@ library(glue)
 library(tidyverse)
 library(lavaan)
 library(semTable)
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/prelims/syntax_rigclm.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=3900)
 
 # pre-processing

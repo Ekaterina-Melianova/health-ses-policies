@@ -6,7 +6,7 @@ library(readxl)
 library(stringr)
 library(readODS)
 library(zoo)
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/prelims/functions.r')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.r')
 
 # data loading
 POLICYDATA_LIST = loadLists(site = sites[7:length(sites)], year_seq = 2013:2020,
