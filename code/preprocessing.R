@@ -172,10 +172,16 @@ dep15 = read.csv('imd2015lsoa.csv')
 table(dep15$Indices.of.Deprivation)
 dep15 %<>% filter(Indices.of.Deprivation %in% c('b. Income Deprivation Domain', 
                                                 'c. Employment Deprivation Domain',
-                                                'd. Education, Skills and Training Domain')) %>%
+                                                'd. Education, Skills and Training Domain',
+                                                'i. Income Deprivation Affecting Children Index (IDACI)',
+                                                'j. Income Deprivation Affecting Older People Index (IDAOPI)'
+                                                )) %>%
   filter(Measurement == 'Score') %>% 
-  group_by(FeatureCode) %>% dplyr::summarise(lsoa_ses_score = mean(Value)) %>%
-  dplyr::select(lsoa11 = FeatureCode, lsoa_ses_score) %>% ungroup()
+  dplyr::select(FeatureCode, Value, Indices.of.Deprivation) %>%
+  pivot_wider(id_cols = FeatureCode, names_from = Indices.of.Deprivation,
+              values_from = Value, names_sort = T) 
+names(dep15) = c('lsoa11', 'inc_dep', 'empl_dep', 'edu_dep', 'yinc_dep', 'oinc_dep')
+dep15$lsoa_ses_score = rowMeans(dep15[, c('inc_dep', 'empl_dep', 'yinc_dep', 'oinc_dep')])
 
 # joining with the main df
 df %<>% left_join(dep15)
@@ -344,27 +350,6 @@ summary(df)
 # saving the final df
 saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
 
-# -------------------------------------- exploring the panel 
-all_vars = c(health_vars,
-             policy_names_6)
-panel_df = df %>% 
-  group_by(LAD21CD, year) %>%
-  dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE)))
-panel = panel_data(panel_df, id = LAD21CD, wave = year)
 
 
-list_plots = list()
-for (i in 1:length(all_vars)){
-  list_plots[[i]] = panel  %>% 
-    ggplot(aes(year, !!sym(all_vars[i]))) +
-    scale_x_continuous(name = NULL, 
-                       breaks = 2013:2019)+ 
-     scale_y_continuous(name = NULL#, breaks = seq(-3, 1.5, 1)
-                        ) + 
-    theme(axis.text = element_text(size = 24)) + 
-    theme(axis.title.x = element_text(size = 24)) +
-    geom_line(aes(group = LAD21CD), color = "lightblue") +
-    geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
-    theme_pubclean()
-}
 

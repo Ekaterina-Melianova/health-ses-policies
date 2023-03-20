@@ -27,6 +27,39 @@ health_vars = c('samhi_index',
 
 endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir')
 
+measures = c('npar',
+             'chisq.scaled',
+             'df.scaled',
+             'cfi.scaled',
+             'tli.scaled',
+             'srmr',
+             'rmsea.scaled',
+             'rmsea.ci.lower.scaled',
+             'rmsea.ci.upper.scaled',
+             'agfi',
+             'aic',
+             'bic',
+             'logl')
+
+nm_out = c('', 'Mental Health Index',
+           'Incapacity Benefits Rate',
+           'Depression Rate',
+           'Antidepressants Rate',
+           'Hospital Attendances Score',
+           'Public Health & Social Care',
+           'Healthcare',
+           'Education',
+           'Environment',
+           'Law and Order',
+           'Infrastructure',
+           'IMD (inc., educ., empl. domains)',
+           'LSOA population size',
+           'Non-white, LSOA prop.',
+           'Females, LSOA prop.',
+           'Older, LSOA prop.',
+           'Rural, prop. of rural LSOAs',
+           'Number of LSOAs in a LAD')
+
 # Random Effects GCLM lavaan syntax
 
 RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir'),
@@ -38,11 +71,13 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
                           past_states = T,
                           cross = T,
                           multiple = F,
+                          resid_stationary = T,
                           group_equality = NULL,
                           restricted_pars = NULL,
-                          model = NULL){
+                          model = 'gclm'){
   require(dplyr)
-
+  n_var = length(endogeneous)
+  
   Intercept = map(endogeneous, ~ glue("1*{.x}{1:max_time}") %>%
                     glue_collapse(" + ") %>%
                     glue("i{.x} =~ ", .)) %>%
@@ -87,7 +122,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
     glue_collapse("\n")
   
 # covar
-  n_var = length(endogeneous)
+
   if(n_var > 2){
     iscov = expand_grid(x = endogeneous,
                          y = endogeneous) %>%
@@ -127,13 +162,21 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
                        glue_collapse("\n")) %>%
     glue_collapse("\n")
   
-  #Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ var{.x}{1:max_time}*e_{.x}{1:max_time}")%>%
-  #                  glue_collapse("\n")) %>%
-  #  glue_collapse("\n")
-  Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ evar{.x}*e_{.x}{1:max_time}")%>%
-                    glue_collapse("\n")) %>%
-    glue_collapse("\n")
-  
+  if (resid_stationary == T){
+      if (multiple == T){
+    Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ c(evar{.x}{1}, evar{.x}{2})*e_{.x}{1:max_time}")%>%
+                      glue_collapse("\n")) %>%
+      glue_collapse("\n")
+  } else{
+    Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ evar{.x}*e_{.x}{1:max_time}")%>%
+                      glue_collapse("\n")) %>%
+      glue_collapse("\n")
+    }
+  } else{
+        Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ e_{.x}{1:max_time}")%>%
+                      glue_collapse("\n")) %>%
+      glue_collapse("\n")
+  }
   
 # Regressions
   t = expand_grid(x = endogeneous,
@@ -271,11 +314,28 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
         mutate(n = rep(1:(n_var-1), n_var)) %>%
         mutate(seq = rep(0:(n_var-1), each = n_var-1)) %>%
         filter(!seq>=n) %>%
-        dplyr::select(x,y) %>%
-        dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ ecov_{x}{y}*e_{y}{i}") 
-                      #glue("e_{x}{i} ~~ e_{y}{i}")
-                      ) %>%
+        dplyr::select(x,y)
+      
+      if (resid_stationary == T){
+        
+        if (multiple == T){
+        s %<>%
+          dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ c(ecov_{x}{y}1, ecov_{x}{y}2)*e_{y}{i}")
+          ) %>%
+          pull(!!sym(col_name))
+                }else{
+        s %<>%
+          dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ ecov_{x}{y}*e_{y}{i}")
+          ) %>%
+          pull(!!sym(col_name))
+                }
+      } else{
+        s %<>%
+          dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ e_{y}{i}") 
+                        ) %>%
         pull(!!sym(col_name))
+        }
+      
       out_ecov = c(out_ecov, s)
     }
     
@@ -488,40 +548,32 @@ ex
 
 # wide data for lavaan
 
-lavaan_df = function(HE,
-                     he = 'health',
-                     hc = 'healthcare',
-                     ed = 'education',
-                     en = 'env',
-                     lo = 'law_order',
-                     ir = 'infrastructure',
-                     max_time = 7,
+lavaan_df = function(dv,
+                     ivs = c('health', 'healthcare','education',
+                             'env', 'law_order', 'infrastructure'),
+                     dv_map = 'HE',
+                     ivs_map = c('he', 'hc','ed',
+                                 'en', 'lo', 'ir'),
+                     ids = c('lsoa11',
+                             'MSOA11CD',
+                             'LAD21CD'),
+                     invariant = control_names,
+                     deprivation_cat = NULL,
                      time = 'time',
+                     max_time = 7,
                      df){
-  df %>%
-    dplyr::select(lsoa11, MSOA11CD, time, LAD21CD,
-                  lsoa_ses_score,
-                  all_of(control_names),
-                  HE = all_of(HE),
-                  he = all_of(he),
-                  hc = all_of(hc), 
-                  ed = all_of(ed), 
-                  en = all_of(en),
-                  lo = all_of(lo), 
-                  ir = all_of(ir)) %>%
-    #filter(time %in% 1:max_time) %>%
-    tidyr::pivot_wider(id_cols = c(lsoa11, MSOA11CD, LAD21CD,
-                                   lsoa_ses_score,
-                                   all_of(control_names)),
+
+  lookup = setNames(c(dv, ivs), c(dv_map, ivs_map))
+  selected = c(dv_map, ivs_map, ids, invariant, deprivation_cat, time)
+
+  out = df %>%
+    rename(all_of(lookup)) %>%
+    dplyr::select(all_of(selected)) %>%
+    tidyr::pivot_wider(id_cols = all_of(c(ids, invariant, deprivation_cat)),
                        names_from = time, 
-                       values_from = c(HE, 
-                                       he,
-                                       hc,
-                                       ed,
-                                       en, 
-                                       lo,
-                                       ir),
+                       values_from = all_of(c(dv_map, ivs_map)),
                        names_sep = '')
+  return(out)
 }
 
 
@@ -711,116 +763,152 @@ CoefsExtract = function(models = NULL,
                         growth = NULL){
   
   m_out = list()
+  colnm = c("lhs", "op", "rhs", "group", "est.std", 'pvalue', 'se')
+  tech = c('lhs', 'op', 'rhs')
   
-  for (i in 1:length(models)){
-    stdsol = standardizedSolution(eval(parse(text = models[i])))
-    tech = c('lhs', 'op', 'rhs')
-      
-    if (any(names(stdsol) == 'label')){
-      stdsol %<>% dplyr::select(!label)
-      }
-    if (is.null(growth)){
-      m_out[[i]] = stdsol[stdsol[,'op'] %in% c('~') & stdsol[,'rhs'] %in% end|
-                          stdsol[,'op'] %in% c('~') & stdsol[,'rhs'] %in% impulses,
-                        c(1:3,4,7)]
-      }
-    else {
-        m_out[[i]] = stdsol[stdsol[,'op'] %in% c('~') & stdsol[,'rhs'] %in% end|
-                              stdsol[,'op'] %in% c('~~') & stdsol[,'lhs'] %in% growth & stdsol[,'rhs'] %in% growth|
-                              stdsol[,'op'] %in% c('~1') & stdsol[,'lhs'] %in% growth|
-                              stdsol[,'op'] %in% c('~') & stdsol[,'rhs'] %in% impulses,
-                            c(1:3,4,7)]
-        }
-    rownames(m_out[[i]]) = NULL
-    m_out[[i]][,'id'] = apply(m_out[[i]][,tech], 1, function(x) str_c(x, collapse = ""))
-    m_out[[i]][,tech] = NULL
-    }
+  m_out <- lapply(models, function(model) {
+    stdsol <- tidy(eval(parse(text = model))) %>% 
+      separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
+      rename(est.std = std.all, se = std.error, pvalue = p.value)
+    
+    stdsol %>% 
+      filter(
+        op == "~" & rhs %in% end |
+          op == "~~" & lhs %in% growth & rhs %in% growth |
+          op == "~1" & lhs %in% growth |
+          op == "~" & rhs %in% impulses
+      ) %>% 
+      dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>% 
+      mutate(id = str_c(lhs, op, rhs)) %>%
+      select(-one_of(tech))
+  })
   
   # curating
-  coefs_long = purrr::reduce(m_out, dplyr::full_join, by = 'id')
-
-  coefs_long %<>% dplyr::select(id, everything())
   
-  coefs_long[,2:ncol(coefs_long)] = sapply(coefs_long[,2:ncol(coefs_long)], as.numeric)
-  coefs_long[,2:ncol(coefs_long)] = round(coefs_long[,2:ncol(coefs_long)], 3)
-  coefs_long = as.data.frame(coefs_long)
+  coefs_long <- m_out %>% 
+    reduce(full_join, by = 'id') %>% 
+    select(id, everything()) %>% 
+    mutate_if(is.numeric, ~ round(., 3))
   
-  fun = function(x){
-    x = ifelse(x<=.001, '***',
-           ifelse(x<=.01 & x>.001, '**',
-                  ifelse(x<=.05 & x>.01, '*',
-                         ifelse(x>.05 & x<=.1, '^', 
-                                ifelse(is.na(x), 'l', '')))))
+  fun <- function(x){
+    case_when(
+      x <= 0.001 ~ '***',
+      x <= 0.01 & x > 0.001 ~ '**',
+      x <= 0.05 & x > 0.01 ~ '*',
+      x > 0.05 & x <= 0.1 ~ '^',
+      is.na(x) ~ 'l',
+      TRUE ~ ''
+    )
   }
-  coefs_long[,grep('pvalue', names(coefs_long))] = 
-    apply(as_tibble(coefs_long[,grep('pvalue', names(coefs_long))]), 2, FUN = fun)
   
-  coefs_long[is.na(coefs_long)] = ''
+  coefs_long <- coefs_long %>%
+    mutate_at(vars(contains('pvalue')), fun) %>%
+    mutate_all(~ ifelse(is.na(.), "", .))
   
-  coefs_long$id <- str_replace(coefs_long$id, "~1", "~#")
-  coefs_long$id = gsub('[[:digit:]]+', '', coefs_long$id)
-  end_ = gsub('[[:digit:]]+', '', end)
-  impulses_ = gsub('[[:digit:]]+', '', impulses)
+  coefs_long$id <- str_replace(coefs_long$id, "~1", "~#") %>%
+    gsub('[[:digit:]]+', '', .)
+  end_ <- gsub('[[:digit:]]+', '', end)
+  impulses_ <- gsub('[[:digit:]]+', '', impulses)
   
   # determining types of effects for further arrangement
-  if (!is.null(growth)){
-    growth_variants = as.vector(expand.grid(growth,growth) %>% 
-                                dplyr::mutate(collapse = glue('{Var1}~~{Var2}')) %>% 
-                                pull(collapse))
+  coefs_long = as.data.table(coefs_long)
+  
+  if (!is.null(growth)) {
+    growth_variants <- expand.grid(growth, growth) %>% 
+      dplyr::mutate(collapse = glue('{Var1}~~{Var2}')) %>% 
+      pull(collapse)
     
-    coefs_long$type = ifelse(coefs_long$id %in% c(paste0(end_, '~', end_),
-                                                  paste0(end_, '~', impulses_)), 'a_auto',
-                             ifelse(substr(coefs_long$id, 1, 2) == substr(health, 1, 2), 'c_policy',
-                                    ifelse(coefs_long$id %in% growth_variants, 'd_growth_cov',
-                                           ifelse(grepl('~#', coefs_long$id), 'd_growth_means', 'b_health'))))
-  } else{
-      coefs_long$type = ifelse(coefs_long$id %in% c(paste0(end_, '~', end_),
-                                                paste0(end_, '~', impulses_)), 'a_auto',
-                           ifelse(substr(coefs_long$id, 1, 2) == substr(health, 1, 2), 'c_policy', 'b_health'))
+    coefs_long[, type := case_when(
+      id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
+      substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
+      id %in% growth_variants ~ 'd_growth_cov',
+      grepl('~#', id) ~ 'd_growth_means',
+      TRUE ~ 'b_health'
+    )]
+  } else {
+    coefs_long[, type := case_when(
+      id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
+      substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
+      TRUE ~ 'b_health'
+    )]
   }
 
-  
-  coefs_long %<>% arrange(type)
-  coefs_long$long_or_short = ifelse(grepl('e_', coefs_long$id), 'short', 'long')
-  coefs_long$num = ifelse(grepl('hc', coefs_long$id), 2, 
-                          ifelse(grepl('he', coefs_long$id, ignore.case = F), 3,
-                                 ifelse(grepl('ed', coefs_long$id), 4,
-                                        ifelse(grepl('en', coefs_long$id), 5,
-                                               ifelse(grepl('lo', coefs_long$id), 6,
-                                                      ifelse(grepl('ir', coefs_long$id), 7, 1
-                                                             ))))))
-  coefs_long %<>% group_by(type) %>% arrange(long_or_short) %>% ungroup()
-  coefs_long$type_long_or_short = paste0(coefs_long$type, coefs_long$long_or_short)
-  coefs_long = coefs_long %>% dplyr::group_by(type_long_or_short) %>%
-    arrange(num, .by_group=TRUE)
-  coefs_long$id = sub('e_', '', coefs_long$id)
+  coefs_long <- coefs_long %>%
+    arrange(type) %>%
+    mutate(
+      long_or_short = ifelse(grepl('e_', id), 'short', 'long'),
+      num = case_when(
+        grepl('hc', id) ~ 2,
+        grepl('he', id, ignore.case = FALSE) ~ 3,
+        grepl('ed', id) ~ 4,
+        grepl('en', id) ~ 5,
+        grepl('lo', id) ~ 6,
+        grepl('ir', id) ~ 7,
+        TRUE ~ 1
+      ),
+      id = sub('e_', '', id),
+      type_long_or_short = paste0(type, long_or_short)
+    ) %>%
+    arrange(type_long_or_short, num)
   
   # to wide format
-  values_from = colnames(coefs_long)[grepl('est|pvalue',colnames(coefs_long))]
-  coefs_wide = coefs_long %>% pivot_wider(id_cols = id, names_from = long_or_short,
-                                               values_from = all_of(values_from))
-  coefs_wide = as.data.frame(coefs_wide)
   
-  columns = colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
+  values_from <- colnames(coefs_long)[grepl('est|pvalue|se',colnames(coefs_long))]
+  ids <- colnames(coefs_long)[colnames(coefs_long) %in% c('id', 'group')]
   
-  for (i in columns){
-    colending = sub('est.std', '', i)
-    coefs_wide[,i] = 
-    paste0(coefs_wide[,i],
-           coefs_wide[,c(paste0('pvalue',colending))])
+  coefs_wide <- pivot_wider(coefs_long, id_cols = all_of(ids),
+                            names_from = long_or_short,
+                            values_from = all_of(values_from))
   
+  columns <- colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
+  
+  for (i in columns) {
+    colending <- sub('est.std', '', i)
+    coefs_wide[[i]] <- paste0(sprintf("%.3f", as.numeric(coefs_wide[[i]])),
+                              coefs_wide[[paste0('pvalue', colending)]],
+                              ' [',
+                              sprintf("%.3f", as.numeric(coefs_wide[[paste0('se', colending)]])),
+                              ']')
   }
-  coefs_wide %<>% dplyr::select(id, starts_with('est'))
+  
+  coefs_wide <- coefs_wide %>%
+    select(all_of(ids), starts_with('est')) %>%
+    as.data.frame()
   
   # removing NANA
-  coefs_wide[coefs_wide=='NANA'] = ''
+  coefs_wide[coefs_wide == 'NANA [NA]' | coefs_wide == 'NA [NA]' | coefs_wide == 'NAl [NA]'] <- ''
   
   # sorting growth means
-  coefs_wide$gsort = ifelse(substr(coefs_wide$id, 1,1) == 'i' & grepl('~#', coefs_wide$id), 1, 
-                            ifelse(substr(coefs_wide$id, 1,1) == 's'  & grepl('~#', coefs_wide$id), 2, 0))
+  coefs_wide$gsort <- case_when(
+    substr(coefs_wide$id, 1, 1) == 'i' & grepl('~#', coefs_wide$id) ~ 1,
+    substr(coefs_wide$id, 1, 1) == 's' & grepl('~#', coefs_wide$id) ~ 2,
+    TRUE ~ 0
+  )
   
   coefs_wide %<>% arrange(gsort) %>% select(-gsort)
   
+  # for multiple group comparison
+  
+  if('group' %in% colnames(coefs_long)){
+    values_from = colnames(coefs_wide)[!colnames(coefs_wide) %in% c('id', 'group')]
+    coefs_wide = coefs_wide %>% pivot_wider(id_cols = id,
+                                            names_from = group,
+                                            values_from = all_of(values_from),
+                                            names_sort = F)
+    
+    # sort colnames
+    colnames = colnames(coefs_wide)
+    get_number <- function(x) {
+      if (!x == 'id'){
+        as.numeric(sub("^.*_(\\d+)$", "\\1", x))
+      }
+    }
+    coefs_wide = coefs_wide[,c('id', names((sort(unlist(sapply(colnames, get_number))))))]
+    
+  }
+  
+  
+
   return(coefs_wide)
 }
 
