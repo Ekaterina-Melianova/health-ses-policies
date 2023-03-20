@@ -10,6 +10,8 @@ library(glue)
 library(tidyverse)
 library(lavaan)
 library(semTable)
+library(data.table)
+
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=3900)
 
@@ -44,16 +46,14 @@ df$samhi_index = -df$samhi_index
 
 #par(mfrow=c(2,2))
 # quick dist 
-hist(df$antidep_rate, breaks = 30, main = 'Meantal Health Index, normalised', )
-hist(df$health, breaks = 30, main = 'Environment, Culture & Planning, \n normalised logarithm of £10,000 per capita')
+hist(df$antidep_rate, breaks = 30)
+hist(df$health, breaks = 30)
 hist(df$healthcare, breaks = 30)
 hist(df$env, breaks = 30)
 hist(df$education, breaks = 30)
 hist(df$law_order, breaks = 30)
 hist(df$infrastructure, breaks = 30)
 hist(df$samhi_index, breaks = 30)
-hist(df$antidep_rate, breaks = 30)
-
 
 # final dataset - wide format
 df_lavaan_mental = lavaan_df(dv = 'samhi_index',
@@ -167,20 +167,6 @@ beepr::beep()
 fm_mental_sub4_fit = fitmeasures(mental_sub4_fit, measures)
 
 # # ----------------------------------------------------------------------
-# 
-# # cross-lagged for comparison
-# clpm_syntax = RC_GCLM_syntax(model = 'clpm', 
-#                              cross = T)
-# clpm_fit = sem(clpm_syntax,
-#                data = df_lavaan_mental, 
-#                estimator = "mlr",
-#                orthogonal = T, 
-#                cluster = 'LAD21CD'
-# )
-# fitmeasures(clpm_fit, measures)
-# summary(clpm_fit, standardized=T)
-# 
-# # ----------------------------------------------------------------------
 
 # Output
 
@@ -191,76 +177,10 @@ nonstationary = c('samhi_index', 'prop_ibesa', 'est_qof_dep', 'antidep_rate',
               'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-summarize_data <- function(dat = df_before_scaling,
-                           .stationary = stationary,
-                           .nonstationary = nonstationary,
-                           year = 'year',
-                           stat = list('Mean' = mean,
-                                       'SD' = sd),
-                           rownames = nm_out[-1]) {
-  
-  vars_used <- c(.nonstationary, .stationary)
-  stat_names = names(stat)
-  
-  # summary for nonstationary
-  sumstat <- dat %>%
-    select(all_of(.nonstationary), year) %>%
-    group_by(year) %>%
-    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
-    pivot_longer(-year, names_to = c("variable", "stat"), names_sep = "__") %>%
-    pivot_wider(id_cols = c(year, variable), names_from = stat, values_from = value) %>%
-    pivot_wider(id_cols = variable, names_from = year, values_from = all_of(stat_names))
-  
-  # sort colnames
-  colnames = colnames(sumstat)
-  get_number <- function(x) {
-    if (!x == 'variable'){
-      as.numeric(sub("^.*_(\\d+)$", "\\1", x))
-    }
-  }
-  sumstat = sumstat[,c('variable', names((sort(unlist(sapply(colnames, get_number))))))]
-  
-  # summary for stationary
-  overall <- dat %>%
-    select(all_of(vars_used)) %>%
-    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
-    pivot_longer(names_to = 'key', values_to = 'value', cols = everything()) %>%
-    separate(key, into = c("variable", "stat"), sep = "__") %>%
-    pivot_wider(id_cols = variable, names_from = stat, values_from = value)
-  
-  # combining
-  sumstat_fin <- sumstat %>%
-    full_join(overall, by = "variable") %>%
-    mutate(across(where(is.numeric), round, 2)) %>%
-    mutate_all(~ ifelse(is.na(.), "", .)) %>%
-    select(-variable) %>%
-    add_column(`Names` = rownames, .before = 1)
-  
-  # adding names
-  dat = as.data.frame(dat)
-  colnames(sumstat_fin)[1] <- ""
-  year_vec = as.vector(unique(dat[,year]))
-  blank_rep = rep('', (length(stat_names)-1))
-  colnames(sumstat_fin) <- c('', c(sapply(2013:2019, function(.) c(., blank_rep))),
-                             'Total', blank_rep)
-  
-  
-  
-  stat_head <- data.frame(matrix(nrow = 1, ncol = ncol(sumstat_fin)))
-  colnames(stat_head) <- colnames(sumstat_fin)
-  stat_head[1,] <- c('', rep(stat_names, (length(year_vec) + 1)))
-  
-  sumstat_fin <- rbind(stat_head, sumstat_fin)
-  
-  return(sumstat_fin)
-  
-}
-
 sumstat_fin = summarize_data(dat = df_before_scaling, stat = list('Mean' = mean,
                                                                   'SD' = sd,
                                                                   'Min' = min,
                                                                   'Max' = max))
-
 # 2. Correlations
 
 cor = signif(cor(df_before_scaling[,vars_used]), 2)
@@ -276,78 +196,9 @@ effects_all = CoefsExtract(models = c('only_growth_fit',
              growth = c(paste0('i', endogeneous), 
                         paste0('s', endogeneous)))
 
-
+# keeping covariances only
 temp = effects_all %>% filter(grepl('~~', id)) %>% 
   dplyr:: select(id, ends_with('long'))
-
-
-# a function to extract growth curve cor tables
-GrowthCorTable = function(dat, cor_name, pars, 
-                          growth = c(paste0('i', endogeneous), 
-                                     paste0('s', endogeneous))){
-  #dat = temp
-  sgn = dat
-  sgn %<>% tidyr::separate(cor_name, c('X', 'Y'), '~~')
-  
-  # Select columns and separate the cor_name column into X and Y columns using '~~' as the separator
-  dat = dat %>%
-    select(all_of(cor_name), all_of(pars)) %>%
-    separate(cor_name, c('X', 'Y'), '~~') %>%
-    # Remove certain characters from the pars columns and convert to numeric type
-    mutate_at(vars(pars), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
-  
-  # Calculate the covariance matrix
-  pivot_initial = dat %>%
-    # Group by X and Y columns, and calculate mean for the pars columns
-    group_by(Y, X) %>%
-    summarize(across(all_of(pars), identity)) %>%
-    # Convert to wide format with X columns as columns and Y columns as rows
-    pivot_wider(names_from = X, values_from = all_of(pars)) %>%
-    column_to_rownames(var = "Y")
-  
-  pivot_initial = t(pivot_initial[growth, growth])
-  
-  # Convert covariance matrix to correlation matrix and remove values in lower triangle
-  pivot = as.data.frame(cov2cor(as.matrix(pivot_initial)))
-  pivot[] = lapply(pivot, sprintf, fmt = "%.2f")
-  pivot[lower.tri(pivot, diag = F)] <- ''
-  
-  # Assign the column names to the row names for the matrix
-  dimnames(pivot) = list(colnames(pivot_initial), colnames(pivot_initial))
-  
-  # Add additional information to the lower triangle of the matrix
-  for (i in seq_along(colnames(pivot))){
-    for (j in seq_along(colnames(pivot))){
-      if (i != j){
-        # Combine the correlation value with the additional information from the dat table
-        pivot[i, j] = paste0(pivot[i, j], str_replace_all(
-          sgn %>% filter(X == colnames(pivot)[i], Y == colnames(pivot)[j]) %>% pull(pars),
-          c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')))
-      }
-    }
-  }
-  
-  # col and row names
-  all_nam = c('Intercept Mental Health',
-              'Intercept Public Health & Social Care',
-              'Intercept Healthcare',
-              'Intercept Education',
-              'Intercept Environment',
-              'Intercept Law and Order',
-              'Intercept Infrastructure',
-              'Slope Mental Health',
-              'Slope Public Health & Social Care',
-              'Slope Healthcare',
-              'Slope Education',
-              'Slope Environment',
-              'Slope Law and Order',
-              'Slope Infrastructure'
-  )
-  dimnames(pivot) = list(all_nam, all_nam)
-  
-  # Return the correlation table
-  return(pivot)
-}
 
 # applying the function
 growthcortab_m3 = GrowthCorTable(dat = temp,
@@ -434,8 +285,8 @@ seq_models_coefs[,c(3,5)] = NULL
 colnames(seq_models_coefs) = c('', 'Growth Curve Only', 'RE-CLPM', '', 'RE-GCLM')
 
 #saving
-write.table(seq_models_coefs, file = "seq_models_coefs.txt",
-            sep = ",", quote = FALSE, row.names = F)
+#write.table(seq_models_coefs, file = "seq_models_coefs.txt",
+#            sep = ",", quote = FALSE, row.names = F)
 
 # 5. Regression Table (2)
 indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
@@ -457,8 +308,8 @@ colnames(indices_models_coefs) = c('', 'IBESA', '',
                                'Hospital Admissions', '')
 
 # saving
-write.table(indices_models_coefs, file = "indices_models_coefs.txt",
-            sep = ",", quote = FALSE, row.names = F)
+#write.table(indices_models_coefs, file = "indices_models_coefs.txt",
+#            sep = ",", quote = FALSE, row.names = F)
 
 
 # 6. Substantive effects from all models
@@ -514,7 +365,8 @@ colnames(head) = colnames(coefs_substantive)
 coefs_substantive = rbind(head, coefs_substantive)
 
 
-#### code for table cleaning 
+#### code for table cleaning (optional)
+
 # Create example data frame
 ddf <- data.frame(ID = 1:3, col1 = c("0.014*^ [0.006]", "0.023*^ [0.004]", "0.011*^ [0.008]"), col2 = c("0.012*^ [0.003]", "0.021*^ [0.005]", "0.017*^ [0.006]"))
 
@@ -596,61 +448,6 @@ ggarrange(list_plots[[6]],
           ncol = 3, nrow = 2,
           font.label = list(size = 14))
 ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/output/spending_lineplots.jpeg")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

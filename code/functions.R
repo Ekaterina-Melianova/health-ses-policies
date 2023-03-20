@@ -755,12 +755,14 @@ plot_effects = function(models = growth_impulses_pastst_fit,
 }
 
 
+# Extract coefficients for SEM models
 
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
                         end = paste0(c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir'), '1'),
                         impulses = paste0(c('e_HE', 'e_he', 'e_hc', 'e_ed', 'e_en', 'e_lo', 'e_ir'), '1'),
                         growth = NULL){
+  require(data.table)
   
   m_out = list()
   colnm = c("lhs", "op", "rhs", "group", "est.std", 'pvalue', 'se')
@@ -912,12 +914,152 @@ CoefsExtract = function(models = NULL,
   return(coefs_wide)
 }
 
+# Extracting growth curve cor tables
+GrowthCorTable = function(dat, cor_name, pars, 
+                          growth = c(paste0('i', endogeneous), 
+                                     paste0('s', endogeneous))){
+  sgn = dat
+  sgn %<>% tidyr::separate(cor_name, c('X', 'Y'), '~~')
+  
+  # Select columns and separate the cor_name column into X and Y columns using '~~' as the separator
+  dat = dat %>%
+    select(all_of(cor_name), all_of(pars)) %>%
+    separate(cor_name, c('X', 'Y'), '~~') %>%
+    # Remove certain characters from the pars columns and convert to numeric type
+    mutate_at(vars(pars), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
+  
+  # Calculate the covariance matrix
+  pivot_initial = dat %>%
+    # Group by X and Y columns, and calculate mean for the pars columns
+    group_by(Y, X) %>%
+    summarize(across(all_of(pars), identity)) %>%
+    # Convert to wide format with X columns as columns and Y columns as rows
+    pivot_wider(names_from = X, values_from = all_of(pars)) %>%
+    column_to_rownames(var = "Y")
+  
+  pivot_initial = t(pivot_initial[growth, growth])
+  
+  # Convert covariance matrix to correlation matrix and remove values in lower triangle
+  pivot = as.data.frame(cov2cor(as.matrix(pivot_initial)))
+  pivot[] = lapply(pivot, sprintf, fmt = "%.2f")
+  pivot[lower.tri(pivot, diag = F)] <- ''
+  
+  # Assign the column names to the row names for the matrix
+  dimnames(pivot) = list(colnames(pivot_initial), colnames(pivot_initial))
+  
+  # Add additional information to the lower triangle of the matrix
+  for (i in seq_along(colnames(pivot))){
+    for (j in seq_along(colnames(pivot))){
+      if (i != j){
+        # Combine the correlation value with the additional information from the dat table
+        pivot[i, j] = paste0(pivot[i, j], str_replace_all(
+          sgn %>% filter(X == colnames(pivot)[i], Y == colnames(pivot)[j]) %>% pull(pars),
+          c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')))
+      }
+    }
+  }
+  
+  # col and row names
+  all_nam = c('Intercept Mental Health',
+              'Intercept Public Health & Social Care',
+              'Intercept Healthcare',
+              'Intercept Education',
+              'Intercept Environment',
+              'Intercept Law and Order',
+              'Intercept Infrastructure',
+              'Slope Mental Health',
+              'Slope Public Health & Social Care',
+              'Slope Healthcare',
+              'Slope Education',
+              'Slope Environment',
+              'Slope Law and Order',
+              'Slope Infrastructure'
+  )
+  dimnames(pivot) = list(all_nam, all_nam)
+  
+  # Return the correlation table
+  return(pivot)
+}
+
+
+
+# Compute descriptive statistics
+
+summarize_data <- function(dat = df_before_scaling,
+                           .stationary = stationary,
+                           .nonstationary = nonstationary,
+                           year = 'year',
+                           stat = list('Mean' = mean,
+                                       'SD' = sd),
+                           rownames = nm_out[-1]) {
+  
+  vars_used <- c(.nonstationary, .stationary)
+  stat_names = names(stat)
+  
+  # summary for nonstationary
+  sumstat <- dat %>%
+    select(all_of(.nonstationary), year) %>%
+    group_by(year) %>%
+    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
+    pivot_longer(-year, names_to = c("variable", "stat"), names_sep = "__") %>%
+    pivot_wider(id_cols = c(year, variable), names_from = stat, values_from = value) %>%
+    pivot_wider(id_cols = variable, names_from = year, values_from = all_of(stat_names))
+  
+  # sort colnames
+  colnames = colnames(sumstat)
+  get_number <- function(x) {
+    if (!x == 'variable'){
+      as.numeric(sub("^.*_(\\d+)$", "\\1", x))
+    }
+  }
+  sumstat = sumstat[,c('variable', names((sort(unlist(sapply(colnames, get_number))))))]
+  
+  # summary for stationary
+  overall <- dat %>%
+    select(all_of(vars_used)) %>%
+    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
+    pivot_longer(names_to = 'key', values_to = 'value', cols = everything()) %>%
+    separate(key, into = c("variable", "stat"), sep = "__") %>%
+    pivot_wider(id_cols = variable, names_from = stat, values_from = value)
+  
+  # combining
+  sumstat_fin <- sumstat %>%
+    full_join(overall, by = "variable") %>%
+    mutate(across(where(is.numeric), round, 2)) %>%
+    mutate_all(~ ifelse(is.na(.), "", .)) %>%
+    select(-variable) %>%
+    add_column(`Names` = rownames, .before = 1)
+  
+  # adding names
+  dat = as.data.frame(dat)
+  colnames(sumstat_fin)[1] <- ""
+  year_vec = as.vector(unique(dat[,year]))
+  blank_rep = rep('', (length(stat_names)-1))
+  colnames(sumstat_fin) <- c('', c(sapply(year_vec, function(.) c(., blank_rep))),
+                             'Total', blank_rep)
+  
+  
+  
+  stat_head <- data.frame(matrix(nrow = 1, ncol = ncol(sumstat_fin)))
+  colnames(stat_head) <- colnames(sumstat_fin)
+  stat_head[1,] <- c('', rep(stat_names, (length(year_vec) + 1)))
+  
+  sumstat_fin <- rbind(stat_head, sumstat_fin)
+  
+  return(sumstat_fin)
+  
+}
+
+
+
 
 #-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
-# functions
+# earlier functions
 
-# cbind dataframes with unequal number of rows
+# cbind data.frames with unequal number of rows
 
 cbind.fill = function(...) {                                                                                                                                                       
   transpoted = lapply(list(...),t)                                                                                                                                                 

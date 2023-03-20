@@ -12,6 +12,7 @@ library(lavaan)
 library(semTable)
 library(viridis)
 library(ggplot2)
+library(data.table)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=3400)
@@ -220,66 +221,6 @@ nonstationary = c('samhi_index', 'prop_ibesa', 'est_qof_dep', 'antidep_rate',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-# sumstat = df_before_scaling %>%
-#   
-#   # Select and rename five variables 
-#   dplyr::select(
-#     all_of(nonstationary), lsoa_dep, year
-#   ) %>%
-#   group_by(lsoa_dep, year) %>%
-#   
-#   # Find the mean and sd for each variable 
-#   summarise(across(everything(),
-#                    list(mean = mean, sd = sd),
-#                    .names = "{.col}__{.fn}"))
-# 
-# sumstat =  as.data.frame(t(sumstat[-c(1,2)]))
-# sumstat$id = rownames(sumstat)
-# rownames(sumstat) = NULL
-# 
-# sumstat %<>%
-#   separate(id, into = c("variable", "stat"), sep = "__") %>%
-#   pivot_wider(id_cols = variable, names_from = stat, values_from = 'V1':'V14')
-# 
-# overall = df_before_scaling %>%
-#   group_by(lsoa_dep) %>%
-#   dplyr::select(all_of(vars_used)) %>%
-#   summarise(across(everything(),
-#                    list(mean = mean, sd = sd),
-#                    .names = "{.col}__{.fn}"
-#                    )) %>%
-#   pivot_longer(names_to = 'key',
-#                values_to = 'value',
-#                cols = samhi_index__mean:n__sd)%>%
-#   separate(key, into = c("variable", "stat"), sep = "__") %>%
-#   pivot_wider(id_cols = c(variable, lsoa_dep), names_from = stat, values_from = value)
-# 
-# sumstat %<>%
-#  mutate(across(where(is.numeric), round, 2)) 
-# 
-# # head
-# substat_head = rbind.data.frame(
-#   c('', c(rbind(c(2013:2019, 'Total'), rep('', 8)))),
-#   c('', rep(c('Mean', 'SD'), 8))
-# )
-# colnames(substat_head) = 1:ncol(substat_head)
-# 
-# # separate into 2 tabs
-# 
-# sumstat_dep1 = sumstat[c(1, 2:15)] %>%
-#   full_join(overall[1:17, c('variable', 'mean', 'sd')]) %>%
-#     mutate(across(where(is.numeric), round, 2))
-# sumstat_dep1 = as.data.frame(apply(sumstat_dep1, 2, function(x) ifelse(is.na(x), '', x)))
-# colnames(sumstat_dep1) = 1:ncol(sumstat_dep1)
-# sumstat_dep1 = rbind.data.frame(substat_head, sumstat_dep1)
-# 
-# sumstat_dep2 = sumstat[c(1, 16:ncol(sumstat))] %>% 
-#   full_join(overall[18:34, c('variable', 'mean', 'sd')]) %>%
-#   mutate(across(where(is.numeric), round, 2))
-# sumstat_dep2 = as.data.frame(apply(sumstat_dep2, 2, function(x) ifelse(is.na(x), '', x)))
-# colnames(sumstat_dep2) = 1:ncol(sumstat_dep2)
-# sumstat_dep2 = rbind.data.frame(substat_head, sumstat_dep2)
-
 sumstat_dep1 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep == 1,],
                               rownames = nm_out[-c(1,13)])
 sumstat_dep2 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep == 2,],
@@ -287,32 +228,27 @@ sumstat_dep2 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep
 
 
 # bracket sd (optional)
-sd_modify = function(dat){
-  for (i in seq(3,17,2)){
-    for(j in 3:nrow(dat)){
-      if(!dat[j,i]==''){
-        dat[j,i] = paste0('[',dat[j,i],']')
-      }
-    }
-  }
-  return(dat)
-}
-sumstat_dep1 = sd_modify(sumstat_dep1)
-sumstat_dep2 = sd_modify(sumstat_dep2)
-
-sumstat_dep1[,1] = c('', nm_out[-13])
-sumstat_dep2[,1] = c('', nm_out[-13])
+# sd_modify = function(dat){
+#   for (i in seq(3,17,2)){
+#     for(j in 2:nrow(dat)){
+#       if(!dat[j,i]==''){
+#         dat[j,i] = paste0('[',dat[j,i],']')
+#       }
+#     }
+#   }
+#   return(dat)
+# }
+# sumstat_dep1 = sd_modify(sumstat_dep1)
+# sumstat_dep2 = sd_modify(sumstat_dep2)
 
 # 2. Correlations
 cor = signif(cor(df_before_scaling[,vars_used]), 2)
 cor[lower.tri(cor, diag=F)] = ''
 colnames(cor) = 1:ncol(cor)
-#cor[,1] = nm_out[-1]
 rownames(cor) = nm_out[-1]
 rownames(cor)[12] = 'LSOA Income and Employment Deprivation'
 
 # 3. Regression Table
-library(data.table)
 group_free_tab = CoefsExtract(models = 'group_free_fit')
 
 # 4. Anova Results
