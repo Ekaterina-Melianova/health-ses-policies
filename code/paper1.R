@@ -11,6 +11,8 @@ library(tidyverse)
 library(lavaan)
 library(semTable)
 library(data.table)
+library(tidyr)
+library(broom)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=3900)
@@ -238,50 +240,40 @@ fit_measures_seq = round(cbind.data.frame(est.std.x_long = fm_only_growth_fit,
                                       est.std.y_long = fm_growth_impulses_fit,
                                       est.std_long = fm_growth_impulses_pastst_fit),2)
 
-TableEffects = function(dat = effects_all, 
-                        .end_new = end_new,
-                        .parameters = parameters,
-                        .section_names = section_names,
-                        fit_measures = NULL){
+# create tables with effects and fit measures
+
+TableEffects <- function(dat = effects_all,
+                         .end_new = end_new,
+                         .parameters = parameters,
+                         .section_names = section_names,
+                         fit_measures = NULL) {
   
-  # filtering effects of interest
-  dat %<>% filter(!grepl('~~', id))
+  patterns <- c("~HE|HE~#", "~hc|hc~#", "~he|he~#", "~ed|ed~#", "~en|en~#", "~lo|lo~#", "~ir|ir~#")
   
-  # renaming
-  dat[,'id'] = ifelse(grepl('~HE|HE~#', dat[,'id']), .end_new[1], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~hc|hc~#', dat[,'id']), .end_new[2], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~he|he~#', dat[,'id']), .end_new[3], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~ed|ed~#', dat[,'id']), .end_new[4], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~en|en~#', dat[,'id']), .end_new[5], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~lo|lo~#', dat[,'id']), .end_new[6], dat[,'id'])
-  dat[,'id'] = ifelse(grepl('~ir|ir~#', dat[,'id']), .end_new[7], dat[,'id'])
-  #dat$id = ifelse(grepl('~~', dat$id), dat$id,
-  #                      sapply(dat$id, FUN = function(x) substr(x,3,nchar(x))))
-  
-  # cleaning
-  fit_measures = cbind.data.frame(id = rownames(fit_measures),fit_measures)
-  fit_measures$id = sub('.scaled', '', fit_measures$id)
-  dat = rbind.fill(dat, fit_measures)
-  dat[is.na(dat)] = ''
-  dat[1:15,4] = dat[1:15,5]
-  dat[30:42,1] = .parameters
+  dat <- dat %>%
+    filter(!grepl("~~", id)) %>%
+    mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
+                                                        .end_new[match(y, patterns)], x), 
+                       .init = id)) %>%
+    rbind.fill(., fit_measures %>% rownames_to_column("id") %>% 
+                 mutate(id = str_remove(id, ".scaled"))) %>%
+    mutate(across(1, ~replace(.x, 30:42, .parameters)))
   
   # subsections in a table
-  rows = c(1, 8, 10, 16, 23, 30)
-  
-  for (i in rev(rows)) {
+  for (i in rev(c(1, 8, 10, 16, 23, 30))) {
     dat = tibble::add_row(dat, .before = i)
   }
   
-  dat[is.na(dat[,1]),1] = .section_names
-  dat = apply(dat, 2, function(x) ifelse(is.na(x), '', x))
-  dat = as.data.frame(dat)
+  dat = dat %>%
+    mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
+    mutate_all(~ ifelse(is.na(.), "", .))
+  
   
   return(dat)
 }
 
 seq_models_coefs = TableEffects(fit_measures = fit_measures_seq)
-seq_models_coefs[,c(3,5)] = NULL
+seq_models_coefs[,3] = NULL
 colnames(seq_models_coefs) = c('', 'Growth Curve Only', 'RE-CLPM', '', 'RE-GCLM')
 
 #saving

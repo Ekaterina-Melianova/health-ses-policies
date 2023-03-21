@@ -769,7 +769,7 @@ CoefsExtract = function(models = NULL,
   tech = c('lhs', 'op', 'rhs')
   
   m_out <- lapply(models, function(model) {
-    stdsol <- tidy(eval(parse(text = model))) %>% 
+    stdsol <- broom::tidy(eval(parse(text = model))) %>% 
       separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
       rename(est.std = std.all, se = std.error, pvalue = p.value)
     
