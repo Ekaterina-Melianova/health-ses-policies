@@ -17,38 +17,87 @@ library(stargazer)
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=600)
 
-wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data/Spending'
-setwd(wd)
-
-# lading files
-files = list.files(wd)
-nm = substr(files, 1, nchar(files)-4)
-list = list()
-for(i in 1:length(files)){
-  assign(nm[i], read.csv(files[i]))
-  list[[i]] = read.csv(files[i])
+upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data/Spending',
+                             starts_from = 15,
+                             ends_with = length(list),
+                             type = c('gross', 'net'),
+                             time = 2013:2019){
   
+  setwd(wd)
+  
+  # loading files
+  files = list.files(wd)
+  nm = substr(files, 1, nchar(files)-4)
+  list = list()
+  for(i in 1:length(files)){
+    assign(nm[i], read.csv(files[i]))
+    list[[i]] = read.csv(files[i])
+    
+  }
+  names(list) = nm
+  
+  # gross or net
+  list = list[starts_from:ends_with]
+  
+  # list to df
+  merge_by = colnames(list[[1]])[c(1,2)]
+  spend_data = list %>% 
+    purrr::reduce(dplyr::full_join, by = merge_by) 
+  
+  spend_data = spend_data[, c(1:3, 5, grep('PerCap', names(spend_data)))]
+  names(spend_data)
+  
+  # naming columns
+  spend_names = c()
+  for (i in list){
+    spend_names = c(spend_names, gsub('_Services|_Net|_Gross|Expen_PerCap|Expen_PerCap|\\.', '',
+                                      colnames(i)[6]))
+  }
+  colnames(spend_data) = c('year', 'LAD21CD', 'name', 'pop', tolower(spend_names))
+  
+  if (type == 'gross'){
+    spend_data %<>% dplyr::rename(social_care_children = children_social_care,
+                                  social_care_adult = adult_social_care,
+                                  transport = highways_and_transport_services,
+                                  environment = environmental)
+  }
+  
+  spend_data$year = as.numeric(spend_data$year)
+  spend_data %<>%
+    mutate(across(education:other, as.numeric))
+  
+  # filtering year
+  
+  spend_data %<>% filter(year %in% time)
+  
+  return(spend_data)
 }
-names(list) = nm
-colnames(list[[13]])[2] = setNames('LTLA20CD', colnames(list[[13]])[2])
 
-spend_data = list %>% 
-  purrr::reduce(dplyr::full_join, by = c("Year", "LTLA20CD")) 
+spend_data_gross  = upload_la_finance(type = 'gross')
+spend_data_net  = upload_la_finance(type = 'net', 
+                                    starts_from = 1,
+                                    ends_with = 14)
+spend_all = spend_data_gross %>%
+  full_join(spend_data_net[,-c(3,4)], by = c('year', 'LAD21CD'))
+summary(spend_all)
+cort = cor(na.omit(spend_all[,c(5:32)]))
 
-spend_data = spend_data[, c(1:3, 5, grep('PerCap', names(spend_data)))]
-#names(spend_data)
+# replace .x and .y with .gross and .net respectively
 
-# naming columns
-spend_names = c()
-for (i in list){
-  spend_names = c(spend_names, gsub('_Services_NetExpen_PerCap', '', colnames(i)[6]))
-}
-colnames(spend_data) = c('year', 'LAD21CD', 'name', 'pop', tolower(spend_names))
-policy_names = tolower(spend_names)
-spend_data$year = as.numeric(spend_data$year)
-spend_data[policy_names] = sapply(spend_data[policy_names], as.numeric)
-#table(spend_data$year)
-#table(spend_data$LAD21CD)
+colnames(spend_all) = sub('.x', '_gross', colnames(spend_all))
+colnames(spend_all) = sub('.y', '_net', colnames(spend_all))
+
+# percent of payed services
+gross_cols = grep("_gross$", names(spend_all), value = TRUE)
+net_cols = grep("_net$", names(spend_all), value = TRUE)
+new_cols = sub('_gross', '_inc', grep("_gross$", names(spend_all), value = TRUE))
+spend_all[, new_cols] = (spend_all[, gross_cols] - spend_all[, net_cols]) #/ spend_all[, gross_cols]
+
+spend_all = spend_all %>% filter(year <= 2018) %>% na.omit()
+table(spend_all$year)
+
+# fin spend dataframe
+spend_data = spend_all
 
 # def
 deflator = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/Financial/GDP_Deflators_Budget_March_2021_update.xlsx',
@@ -61,7 +110,8 @@ spend_data = spend_data %>%
   left_join(deflator, by = 'year')
 
 # in prices of 2020
-spend_data[policy_names] = spend_data[policy_names]*spend_data[,'def']/100
+spend_data %<>%
+  mutate(across(education_gross:other_inc, ~ . * def / 100))
 
 # Small Area Mental Health Index (SAMHI)
 health_lsoa = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/samhi_21_01_v4.00_2011_2019_LSOA_tall.csv')
@@ -70,91 +120,34 @@ lsoa_lad %<>% dplyr::select(LAD21CD, lsoa11 = LSOA11CD, MSOA11CD)
 lsoa_lad = lsoa_lad %>% distinct()
 health_lsoa %<>% left_join(lsoa_lad, by = "lsoa11")
 #table(is.na(health_lsoa$LAD21CD))
+#tab = health_lsoa %>% group_by(lsoa11) %>% summarise(n = n())
 
-tab = health_lsoa %>% group_by(lsoa11) %>% summarise(n = n())
+# filtering missings
+# to_filter = as.data.frame(table(spend_data[is.na(spend_data$education_inc), 'LAD21CD']))
+# spend_data %<>%
+#   filter(!LAD21CD %in% as.character(to_filter[to_filter$Freq>1, 'Var1']))
+# spend_data = spend_data %>% group_by(LAD21CD) %>%
+#   dplyr::mutate(across(c(education:police, other),
+#                        ~ if_else(year >= 2012, na_ma(.x), .x)))
 
-# filtering
-to_filter = as.data.frame(table(spend_data[is.na(spend_data$education), 'LAD21CD']))
-spend_data %<>%
-  filter(!LAD21CD %in% as.character(to_filter[to_filter$Freq>1, 'Var1']))
-spend_data = spend_data %>% group_by(LAD21CD) %>%
-  dplyr::mutate(across(c(education:police, other),
-                       ~ if_else(year >= 2012, na_ma(.x), .x)))
-
-# fixing Northamptonshire
-spend_data[spend_data$LAD21CD == 'E07000152', 'LAD21CD'] = 'E06000061'
-spend_data[spend_data$LAD21CD == 'E07000155', 'LAD21CD'] = 'E06000062'
-
-# obesity
-#obes = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/QOF_4_09__LSOA.csv')
-#obes = obes %>% select(lsoa11, year, obes_rate = p_rate)
-
-# stroke
-#stroke = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/QOF_4_10__LSOA.csv')
-#stroke = stroke %>% select(lsoa11, year, stroke_rate = p_rate)
-
-# vulnerability clusters
-#v_clusters = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/consumervulnerabiltyclusters.csv')
-#v_clusters %<>% dplyr::select(OA11CD = output_area, cluster)
-
-# NHS for UK
-#nhs = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/ukhajhaq2022hfxfscsv.csv')
-#nhs = nhs %>% 
-#  filter(Measure == 'Real terms' & HF_code == 'HFTOT') %>%
-#  dplyr::select(HF_code, starts_with('X')) %>%
-#  pivot_longer(cols = X1997:X2020, names_to = 'year',
-#               values_to = 'nhs_tot') %>%
-#  dplyr::select(nhs_tot, year) %>%
-#  group_by(year) %>%
-#  dplyr::summarise(nhs_tot = sum(nhs_tot))
-# nhs$year = as.numeric(sub('X', '', nhs$year))
-
-# joining
-#letter2number = function(x) {utf8ToInt(x) - utf8ToInt("a") + 1L}
-#myletters = letters[sample(26,8)]
-#unname(sapply(myletters, letter2number))
+# fixing Northamptonshire (if Net spending)
+#spend_data[spend_data$LAD21CD == 'E07000152', 'LAD21CD'] = 'E06000061'
+#spend_data[spend_data$LAD21CD == 'E07000155', 'LAD21CD'] = 'E06000062'
 
 df = health_lsoa %>% 
-  left_join(spend_data, by = c('LAD21CD', 'year')) #%>%
-  #left_join(obes, by = c('lsoa11', 'year')) %>%
-  #left_join(stroke, by = c('lsoa11', 'year')) %>%
-  #left_join(v_clusters) %>% 
-  #left_join(nhs)
-#table(df[is.na(df$education), 'LAD21CD'])
-tab = df %>% group_by(lsoa11) %>% summarise(n = n())
+  filter(year %in% 2013:2018) %>%
+  left_join(spend_data, by = c('LAD21CD', 'year'))
+tab = df %>% group_by(lsoa11) %>%
+  summarize(n_non_missing = sum(!is.na(police_inc)))
+
+df %<>% filter(lsoa11 %in% as.data.frame(tab[tab$n_non_missing == 6, 'lsoa11'])$lsoa11)
+table(df$year) # 31267
 
 # remove Copeland and Isles of Scilly with missing data
 # also remove Dorset Council and Bournemouth, Christchurch and Poole due to unstable borders
 df = df %>% filter(!LAD21CD %in% c('E06000053', 'E07000029',
                                    'E06000058', 'E06000059')) 
-
-# from 2013 for now
-#df = df %>% filter(year>=2013)
-#table(df$year)
-#length(unique(df$MSOA11CD))
-
-#### regional gross disposable household income (GDHI) from ONS
-#gross_raw = nomisr::nomis_get_data(id = "NM_185_1",
-#                                   geography = c('TYPE431', 'TYPE432'),
-#                                   time = 2013:2019)
-#
-#1
-#gross_inc = gross_raw %>% filter(grepl('E', GEOGRAPHY_CODE) &
-#                                   !grepl('T', GEOGRAPHY_CODE)) %>%
-#  filter(MEASURE_NAME == 'Gross Disposable Household Income - GDHI (£m)') %>%
-#  filter(COMPONENT_OF_GDHI == 0) %>%
-#  dplyr::select(c(DATE, GEOGRAPHY_CODE,
-#                  MEASURE_NAME, OBS_VALUE,
-#                  GEOGRAPHY_TYPE)) %>%
-#  filter(grepl('local authorities', GEOGRAPHY_TYPE))
-#
-#gross_inc = gross_inc %>% 
-#  dplyr::rename(year = DATE, LAD21CD = GEOGRAPHY_CODE, 
-#                gross_inc = OBS_VALUE) %>%
-#  dplyr::select(year, LAD21CD, gross_inc) %>%
-#  distinct()
-#
-#df = df %>% dplyr::left_join(gross_inc, by = c('LAD21CD', 'year'))
+summary(df)
 
 # IMD
 # dep_lsoa = IMD::imd_england_lsoa
@@ -186,41 +179,6 @@ dep15$lsoa_ses_score = rowMeans(dep15[, c('inc_dep', 'empl_dep', 'yinc_dep', 'oi
 # joining with the main df
 df %<>% left_join(dep15)
 
-#df = df %>% group_by(MSOA11CD) %>% 
-#  dplyr::mutate(Income_decile_msoa = mean(Income_decile)) %>%
-# ungroup()
-#df = df %>% group_by(LAD21CD) %>% 
-#  dplyr::mutate(Income_decile_lad = mean(Income_decile))
-#summary(df$Income_decile_lad)
-
-# deflate earnings
-#df$gross_inc = df$gross_inc*df$def/100
-
-# CCGs
-# ccg_16 = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/q-total-place-based-pace-change.xlsx',
-#                     sheet = '2016-17', skip = 9)[, c('CCG', 'Target per head')] %>% na.omit()
-# ccg_17 = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/q-total-place-based-pace-change.xlsx',
-#                     sheet = '2017-18', skip = 9)[, c('CCG', 'Target per head')] %>% na.omit()
-# ccg_18 = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/q-total-place-based-pace-change.xlsx',
-#                     sheet = '2018-19', skip = 9)[, c('CCG', 'Target per head')] %>% na.omit()
-# ccg_19 = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/q-total-place-based-pace-change.xlsx',
-#                     sheet = '2019-20', skip = 9)[, c('CCG', 'Target per head')] %>% na.omit()
-# ccg_13_15 = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/j-ccg-pace-change.xlsx',
-#                     sheet = 'Option 1', skip = 6)
-# colsel = grep('Target per head', colnames(ccg_13_15 %>% rename_with(., ~gsub(".", "", .x, fixed = T))%>% 
-#   rename_with(., ~gsub("\r\n", " ", .x, fixed = T))))
-# colsel = c('CCG', 'Allocation per head\r\n£', colnames(ccg_13_15)[colsel[c(2,4)]])
-# ccg_13_15 = ccg_13_15[,colsel] %>% na.omit()
-
-# ccg = list(ccg_13_15, ccg_16, ccg_17, ccg_18, ccg_19) %>% 
-#   purrr::reduce(dplyr::full_join, by = 'CCG') 
-# colnames(ccg) = c('CCG', 2013:2019)
-# # tweaking some restructuring
-# ccg[ccg$CCG == '13T', c('2013', '2014', '2015')] = 
-#   as.list(colMeans(ccg[ccg$CCG %in% c('00F', '00G', '00H'), c('2013', '2014', '2015')]))
-# ccg %<>% na.omit() %>% pivot_longer(cols = '2013':'2019', values_to = 'ccg',
-#                                     names_to ='year')
-
 # codes for merging LSOAa with CCGs
 setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data')
 lsoa_to_ccg15 = read.csv('Lower_Layer_Super_Output_Area_(2011)_to_Clinical_15.csv')
@@ -238,15 +196,6 @@ lsoa_to_ccg = list(
   cbind(lsoa_to_ccg19 %>% dplyr::select(LSOA11CD), 'year' = 2018, 'CCG' = lsoa_to_ccg19$CCG19CDH),
   cbind(lsoa_to_ccg19 %>% dplyr::select(LSOA11CD), 'year' = 2019, 'CCG' = lsoa_to_ccg19$CCG19CDH)) %>% 
   purrr::reduce(rbind)
-
-#ccg %<>% left_join(lsoa_to_ccg[,c('CCG16CDH', 'LSOA11CD')], by = c('CCG' = 'CCG16CDH'))
-#ccg$year = as.numeric(ccg$year)
-
-# merging with the main df
-#df = df %>% left_join(ccg, by = c('lsoa11' = 'LSOA11CD', 'year'))%>%
-#  filter(year >=2013)
-#df$ccg = df$ccg*df$def/100
-#hist(df$ccg)
 
 # from dashboard
 dash = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/CCG-allocations-dashboard-to-2023-24.xlsx',
@@ -329,6 +278,21 @@ df = as.data.frame(df)
 df$time = df$year - (min(df$year)-1)
 
 # policy groups
+lad_inc_vars_initial = colnames(df)[grepl('_inc', colnames(df))]
+
+expend_type = function(dat = df, type){
+  if (type == 'gross'){
+    for (col in  colnames(dat)){
+      if (grepl(paste0('_', type), col)){
+        colnames(dat)[colnames(dat) == col] = sub(paste0('_', type), '', col)
+      }
+    }
+  }
+  return(dat)
+}
+
+df = expend_type(type = 'gross')
+
 df$public_health = ifelse(is.na(df$public_health), 0, df$public_health)
 df$health = df$social_care + df$public_health
 df$healthcare = df$ccg/1000 # to make it in thousand £ as other spends
@@ -337,6 +301,20 @@ df$education = df$education
 df$law_order = df$housing + df$police
 df$infrastructure = df$transport + df$fire + df$central + df$other
 df$total = df$health + df$healthcare + df$education + df$env + df$law_order + df$infrastructure
+
+# LAD income variables - average by years
+
+df = df %>%
+  group_by(LAD21CD) %>% 
+  mutate(across(all_of(lad_inc_vars_initial), ~ mean(.)))
+
+df$public_health_inc = ifelse(is.na(df$public_health_inc), 0, df$public_health_inc)
+df$health_inc = df$social_care_inc + df$public_health_inc
+df$env_inc = df$environment_inc + df$planning_inc + df$cultural_inc
+df$education_inc = df$education_inc
+df$law_order_inc = df$housing_inc + df$police_inc
+df$infrastructure_inc = df$transport_inc + df$fire_inc + df$central_inc + df$other_inc
+
 
 # Budget size
 #avr = mean(df$total)

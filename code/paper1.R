@@ -60,10 +60,18 @@ hist(df$samhi_index, breaks = 30)
 # final dataset - wide format
 df_lavaan_mental = lavaan_df(dv = 'samhi_index',
                              df = df,
-                             max_time = 7)
+                             max_time = 6)
 df_lavaan_mental = as.data.frame(na.omit(df_lavaan_mental))
 summary(df_lavaan_mental)
 
+
+# #set.seed(123)
+# n_rows = nrow(df_lavaan_mental)
+# mat <- matrix(rnorm(n_rows * 6, mean = 4, sd = 1.5), nrow = n_rows, ncol = 6)
+# colnames(mat) = c('ed1', 'ed2', 'ed3', 'ed4', 'ed5', 'ed6')
+# #hist(mat[,'ed4'])
+# 
+# df_lavaan_mental = cbind.data.frame(df_lavaan_mental, mat)
 
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
@@ -74,7 +82,8 @@ summary(df_lavaan_mental)
 # 1. Random Curves
 only_growth_syntax = RC_GCLM_syntax(model = 'gclm',
                                     impulses = F,
-                                    past_states = F)
+                                    past_states = F,
+                                    control = c(control_names, lad_inc_vars))
 only_growth_fit = sem(only_growth_syntax,
                       data = df_lavaan_mental, 
                       estimator = "mlr",
@@ -101,15 +110,18 @@ fm_growth_impulses_fit = fitmeasures(growth_impulses_fit, measures)
 # 3. Adding Past States == FULL MODEL
 growth_impulses_pastst_syntax = RC_GCLM_syntax(model = 'gclm',
                                                impulses = T,
-                                               past_states = T)
-growth_impulses_pastst_fit = sem(growth_impulses_pastst_syntax,
+                                               past_states = T,
+                                               max_time = 6,
+                                               control = c(control_names))
+growth_impulses_pastst_fit_nc = sem(growth_impulses_pastst_syntax,
                                  data = df_lavaan_mental, 
                                  estimator = "mlr",
                                  orthogonal = T, 
                                  cluster = 'LAD21CD'
 )
 beepr::beep()
-#summary(growth_impulses_pastst_fit, standardized=T)
+summary(growth_impulses_pastst_fit, standardized=T)
+summary(growth_impulses_pastst_fit_nc, standardized=T)
 fm_growth_impulses_pastst_fit = fitmeasures(growth_impulses_pastst_fit, measures)
 gc()
 

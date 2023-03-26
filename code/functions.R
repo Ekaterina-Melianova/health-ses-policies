@@ -25,6 +25,8 @@ health_vars = c('samhi_index',
                 'est_qof_dep',
                 'prop_ibesa')
 
+lad_inc_vars = paste0(policy_names_6[-2], '_inc')
+
 endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir')
 
 measures = c('npar',
@@ -557,17 +559,17 @@ lavaan_df = function(dv,
                      ids = c('lsoa11',
                              'MSOA11CD',
                              'LAD21CD'),
-                     invariant = control_names,
+                     invariant = c(control_names, lad_inc_vars),
                      deprivation_cat = NULL,
                      time = 'time',
-                     max_time = 7,
+                     max_time = 6,
                      df){
 
   lookup = setNames(c(dv, ivs), c(dv_map, ivs_map))
   selected = c(dv_map, ivs_map, ids, invariant, deprivation_cat, time)
 
   out = df %>%
-    rename(all_of(lookup)) %>%
+    dplyr::rename(all_of(lookup)) %>%
     dplyr::select(all_of(selected)) %>%
     tidyr::pivot_wider(id_cols = all_of(c(ids, invariant, deprivation_cat)),
                        names_from = time, 
