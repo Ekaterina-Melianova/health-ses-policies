@@ -200,19 +200,81 @@ POLICYDATA %<>% rename(LAD21CD = LAD)
 policydata = POLICYDATA %>%
   left_join(spend_data_net[,c('year', 'LAD21CD', 'pop')])%>%
   select(code, LAD21CD, la, class, year, pop, everything())%>%
-  #left_join(spend_data_gross[,c('year', 'LAD21CD', 'pop')], by = c('year', 'LAD21CD')) %>%
+  left_join(spend_data_gross[,c('year', 'LAD21CD', 'pop')] 
+            %>% rename(pop.y = pop), by = c('year', 'LAD21CD')) %>%
   filter(year %in% 2013:2019)
 
+# return population data for Buckinghamshire since it changed in 2020 but I use data up to 2019
 
-# if pop is missing in UA or SD with their respective SC, remove them due to boundary changes
+Buck = paste0('E0', 7000004:7000007)
+policydata[policydata$LAD21CD %in% Buck, "pop"] =
+  policydata[policydata$LAD21CD %in% Buck, "pop.y"]
 
-UA_SD_remove = policydata[is.na(policydata$pop) & policydata$class %in% c('UA', 'SD'), 'LAD21CD']
-policydata %<>% filter(!LAD21CD %in% UA_SD_remove)
-table(policydata[is.na(policydata$pop), 'class'])
+policydata %<>% select(-pop.y)
+
+# for Buckinghamshire retrieve population with a spline in 2019
+buck_imputed = policydata %>% group_by(LAD21CD) %>%
+  filter(LAD21CD %in% Buck) %>%
+  mutate(pop = imputeTS::na_ma(pop)) 
+policydata[policydata$LAD21CD %in% Buck,] = buck_imputed
+
+# remove Dorset and its SD completely since it changed in 2019
+policydata %<>% filter(!LAD21CD %in% c('E10000009',
+                                       'E06000059',
+                                       'E06000058',
+                                       paste0('E0', 7000048:7000053),
+                                       'E06000029',
+                                       'E06000028'))
+
+# obtain total population for SC by summing values for their respective SD
+
+policydata$code_sub = substr(policydata$code, 1, 3) # code for upper tier connected to lower tier
+scd = policydata %>% filter(class %in% c('SC', 'SD')) %>%
+  group_by(year, code_sub) %>%
+  mutate(pop_sum = sum(pop, na.rm = T))
+scd$pop = ifelse(scd$class == 'SC', scd$pop_sum, scd$pop)
+policydata[policydata$LAD21CD %in% scd$LAD21CD, 'pop'] = scd[,'pop']
+
+# remove the changed parts of Suffolk
+policydata %<>% filter(!LAD21CD %in% c('E10000029',
+                                       'E07000201',
+                                       paste0('E0', 7000204:7000206),
+                                       'E07000244',
+                                       'E07000245'))
+
+# remove Taunton Deane and West Somerset and their merge Somerset West and Taunton in 2019
+policydata %<>% filter(!LAD21CD %in% c('E07000190',
+                                       'E07000191',
+                                       'E07000246'))
+
+# spline for Isles of Scilly and Dorset Police and Crime Commissioner and Chief Constable
+scilly_imputed = policydata %>% group_by(LAD21CD) %>%
+  filter(LAD21CD %in% 'E06000053') %>%
+  mutate(across(pop:total, ~ imputeTS::na_ma(.))) 
+police_dorset_imputed = policydata %>% group_by(LAD21CD) %>%
+  filter(LAD21CD %in% 'E23000039') %>%
+  mutate(across(education:total, ~ imputeTS::na_ma(.))) 
+
+policydata[policydata$LAD21CD %in% 'E06000053',] = scilly_imputed
+policydata[policydata$LAD21CD %in% 'E23000039',] = police_dorset_imputed
+
+# # find percentage for each lower tier la
+# policydata$class2 = ifelse(policydata$class == 'SC', 'SD', policydata$class)
+# policydata %<>% group_by(year, class2) %>%
+#   mutate(pop_pct_scd = ifelse(class == 'SD', pop/first(pop), 1)) %>%
+#   ungroup()
+
+# out
+policydata %<>% select(code:total)
 
 # saving
-saveRDS(policydata, paste0("C:/Users/", Sys.getenv("USERNAME"), '/YandexDisk/PhD Research/Data/Financial/policydata.RData'))
+write.csv(policydata, paste0("C:/Users/", Sys.getenv("USERNAME"), '/YandexDisk/PhD Research/Data/Financial/policydata.csv'))
 
+###
+###
+###
+###
+###
 
 
 # LADs for 4 Transport Authorities in 2013 are missing because they were replaced
@@ -227,30 +289,6 @@ POLICYDATA[POLICYDATA$la == 'West Yorkshire Integrated Transport Authority', 'LA
   POLICYDATA[POLICYDATA$la == 'The West Yorkshire Combined Authority', 'LAD'][1]
 
 
-# population data
-population_raw = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/Socio-demographics/Population.xls',
-                             sheet = 'MYE 5', skip = 7)
-population_raw = population_raw[as.logical(replace(grepl("Population",
-                                                          colnames(population_raw)), 1, 'TRUE'))]
-population_raw = population_raw[, 1:(length(year) + 1)] # selecting 8 years plus the first 'code' column
-names(population_raw) = c('LAD', year)
-
-# long format
-population = population_raw %>%
-  pivot_longer(cols = starts_with("2"), names_to = "year", values_to = "population")
-population$year = as.numeric(population$year)
-
-# old population data (before 2018)
-population_18_raw = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/Socio-demographics/MYEB3_summary_components_of_change_series_UK_(2018).csv')
-population_18_raw = population_18_raw[as.logical(replace(grepl("population",
-                                                         colnames(population_18_raw)), 1, 'TRUE'))]
-population_18_raw = population_18_raw[, c(1, (ncol(population_18_raw) - (length(year) - 3)):ncol(population_18_raw))] # selecting years
-names(population_18_raw)[-1] <- 2013:2018
-
-# long format
-population_18 = population_18_raw %>%
-  pivot_longer(cols = starts_with("2"), names_to = "year", values_to = "population")
-population_18$year = as.numeric(population_18$year)
 
 
 
