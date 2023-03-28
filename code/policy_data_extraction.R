@@ -204,6 +204,9 @@ policydata = POLICYDATA %>%
             %>% rename(pop.y = pop), by = c('year', 'LAD19CD')) %>%
   filter(year %in% 2013:2019)
 
+# mistake in North Yorkshire
+policydata[policydata$LAD19CD %in% 'E10000022', 'LAD19CD'] = 'E10000023'
+
 # return population data for Buckinghamshire since it changed in 2020 but I use data up to 2019
 
 Buck = paste0('E0', 7000004:7000007)
@@ -214,9 +217,9 @@ policydata %<>% select(-pop.y)
 
 # for Buckinghamshire retrieve population with a spline in 2019
 buck_imputed = policydata %>% group_by(LAD19CD) %>%
-  filter(LAD19CD %in% Buck) %>%
+  filter(LAD19CD %in% c(Buck, 'E07000029')) %>% # Copeland in 2017 as well
   mutate(pop = imputeTS::na_ma(pop)) 
-policydata[policydata$LAD19CD %in% Buck,] = buck_imputed
+policydata[policydata$LAD19CD %in% c(Buck, 'E07000029'),] = buck_imputed
 
 # remove Dorset and its SD completely since it changed in 2019
 policydata %<>% filter(!LAD19CD %in% c('E10000009',
@@ -236,7 +239,7 @@ scd$pop = ifelse(scd$class == 'SC', scd$pop_sum, scd$pop)
 policydata[policydata$LAD19CD %in% scd$LAD19CD, 'pop'] = scd[,'pop']
 
 # remove the changed parts of Suffolk
-policydata %<>% filter(!LAD19CD %in% c('E10000029',
+policydata %<>% filter(!LAD19CD %in% c(#'E10000029',
                                        'E07000201',
                                        paste0('E0', 7000204:7000206),
                                        'E07000244',
@@ -273,36 +276,29 @@ policydata[policydata$la == 'West Yorkshire Integrated Transport Authority', 'LA
   policydata[policydata$la == 'The West Yorkshire Combined Authority', 'LAD19CD'][1]
 
 
-# set wd
+# setwd
 setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data/')
 
 ## combined authorities
 comb = read.csv('combined_lookup.csv')
-policydata %<>% left_join(comb[,c('LAD19CD', 'CAUTH19CD')], by = 'LAD19CD')
-comb_uniq = unique(policydata$LAD19CD[policydata$class == 'O' &
-                                        grepl('Combined', policydata$la) &
-                                        !grepl('Fire', policydata$la)])
-comb_uniq[!comb_uniq %in% unique(comb$CAUTH19CD)] 
-# "E47000005" missing in 2018
-
+comb = comb %>% select(LAD19CD_ = LAD19CD, CAUTH19CD) %>% 
+  full_join(policydata %>% select(LAD19CD, la, year) %>%
+              filter(grepl('Combined', policydata$la) &
+                       !grepl('Fire', policydata$la)),
+            by = c('CAUTH19CD' = 'LAD19CD'))
+table(comb[is.na(comb$LAD19CD_), 'CAUTH19CD'])# "E47000005" missing in 2014:2018
+policydata %<>% left_join(comb %>% select(LAD19CD = LAD19CD_, CAUTH19CD, year),
+                          by = c('LAD19CD', 'year'))
 # retrieve manually:
 policydata[policydata$LAD19CD %in%
-c('E06000047',
-  'E06000057',
-  'E08000021',
-  'E08000022',
-  'E08000023',
-  'E08000024',
-  'E08000037'), 'CAUTH19CD'] = "E47000005"
-
-# "E47000010" "E47000011" appear only in 2019, making replacement
-comb_to_replace1 = comb[comb$CAUTH19CD == 'E47000010', 'LAD19CD']
-policydata[policydata$LAD19CD %in% comb_to_replace1 &
-             policydata$year %in% 2019, 'CAUTH19CD'] = "E47000010"
-
-comb_to_replace2 = comb[comb$CAUTH19CD == 'E47000011', 'LAD19CD']
-policydata[policydata$LAD19CD %in% comb_to_replace2 &
-             policydata$year %in% 2019, 'CAUTH19CD'] = "E47000011"
+             c('E06000047',
+               'E06000057',
+               'E08000021',
+               'E08000022',
+               'E08000023',
+               'E08000024',
+               'E08000037') &
+             policydata$year %in% 2014:2018, 'CAUTH19CD'] = "E47000005"
 
 ## parks
 parks = read.csv('parks_la_match.csv')
@@ -322,47 +318,52 @@ lad_parks_to_replace2 = parks[parks$NPARK22CD == 'E26000012', 'LAD19CD']
 policydata[policydata$LAD19CD %in% lad_parks_to_replace2 &
              policydata$year %in% 2013:2014, 'NPARK22CD'] = "E26000008"
 
+# upper tier to lower tier 
+# E10000012 E10000015
+scd_codes = read.csv('upper_to_lower_lookup.csv') %>% 
+  select(LAD19CD = LTLA19CD, UTLACD = UTLA19CD) 
+lad_parks_to_replace3 = scd_codes[scd_codes$UTLACD %in% c('E10000012', 'E10000015'), 'LAD19CD']
+policydata[policydata$LAD19CD %in% lad_parks_to_replace3 &
+             policydata$year %in% 2013:2019, 'NPARK22CD'] = "E6803"
 
 ## fire
 fire = read.csv('fire_lookup.csv')
-policydata %<>% left_join(fire[,c('LAD19CD', 'FRA19CD')], by = 'LAD19CD')
-fire_uniq = unique(policydata$LAD19CD[policydata$class == 'O' &
-                                        grepl('Fire', policydata$la)])
-fire_uniq[!fire_uniq %in% unique(fire$FRA19CD)] 
-
-# "E31000012" "E31000038" missing in 2013-2015
+fire = fire %>% select(LAD19CD_ = LAD19CD, FRA19CD) %>% 
+  full_join(policydata %>% select(LAD19CD, la, year) %>%
+              filter(grepl('Fire', policydata$la)),
+            by = c('FRA19CD' = 'LAD19CD'))
+table(fire[is.na(fire$LAD19CD_), 'FRA19CD']) # "E31000012" "E31000038" 'missing in 2013-2015
+policydata %<>% left_join(fire %>% select(LAD19CD = LAD19CD_, FRA19CD, year),
+                          by = c('LAD19CD', 'year'))
 
 
 ## police
 police = read.csv('police_lookup.csv')
-policydata %<>% left_join(police[,c('LAD20CD', 'PFA20CD')] %>%
-                            rename(LAD19CD = LAD20CD), by = 'LAD19CD')
-police_uniq = unique(policydata$LAD19CD[policydata$class == 'O' &
-                                        grepl('Police', policydata$la)])
-police_uniq[!police_uniq %in% unique(police$PFA20CD)] # "E31000028" missing
-
+police = police %>% select(LAD19CD = LAD20CD, PFA20CD) %>% 
+  full_join(policydata %>% select(LAD19CD, la, year) %>%
+              filter(grepl('Police', policydata$la)),
+            by = c('PFA20CD' = 'LAD19CD'))
+table(police[is.na(police$LAD19CD), 'PFA20CD']) # "E31000028" missing in 2019
+policydata %<>% left_join(police %>% select(LAD19CD, PFA20CD, year),
+                          by = c('LAD19CD', 'year'))
 
 ## fixing missing fire and police
 
 # Fire Dorset "E31000012" should be removed since the LAD itself was removed earlier
 policydata %<>% filter(!LAD19CD == 'E31000012')
 
-# Wiltshire 'E31000038'can be taken from their police counterpart 'E23000038'
-police_to_fire = police[police$PFA20CD == 'E23000038', 'LAD20CD']
-policydata[policydata$LAD19CD %in% police_to_fire  &
-             policydata$year %in% 2013:2015, 'FRA19CD'] = "E31000038"
-
-# Police Northamptonshire "E31000028" we can take from the respective fire LA
-policydata[policydata$FRA19CD == 'E31000028' &
-             policydata$year %in% 2019 & 
-             !is.na(policydata$FRA19CD), 'PFA20CD'] = 'E31000028'
-
 # Police Dorset remove as well
 policydata %<>% filter(!LAD19CD == 'E23000039')
 
+# Wiltshire 'E31000038'can be taken from their police counterpart 'E23000038'
+police_to_fire = police[police$PFA20CD == 'E23000038', 'LAD19CD']
+policydata[policydata$LAD19CD %in% police_to_fire  &
+             policydata$year %in% 2013:2015, 'FRA19CD'] = "E31000038"
+
+
 # waste
 
-waste <- data.frame(
+waste = data.frame(
   LAD = c("E50000001", "E50000006", "E50000002", "E50000004", "E50000003", 'E50000005'),
   la_waste = c("East London Waste Authority", "Merseyside Waste Disposal Authority",
                "North London Waste Authority", "Western Riverside Waste Authority",
@@ -375,8 +376,6 @@ waste <- data.frame(
          'Bolton, Bury, Manchester, Oldham, Rochdale, Salford, Stockport, Tameside, Trafford, Wigan')
 )
 
-#policydata_ = policydata
-
 for (i in 1:nrow(waste)){
   if (i == 6) {# special case for Manchester since its waste authority disappeared in 2018
     row = policydata$la %in% unlist(strsplit(waste$la[i], ', '))
@@ -387,7 +386,9 @@ for (i in 1:nrow(waste)){
   }
 }
 
-# check if all 'O' LADs are matched (should only Greater London)
+
+
+# check if all 'O' LADs are matched (should be only Greater London)
 selected_values = policydata[policydata$class == 'O', 'LAD19CD']
 id_vars = c('CAUTH19CD', 'NPARK22CD', 'FRA19CD', 'PFA20CD', 'waste')
 setdiff(selected_values, unlist(policydata[, id_vars]))
@@ -396,32 +397,85 @@ setdiff(selected_values, unlist(policydata[, id_vars]))
 policydata[policydata$class == 'L', 'CAUTH19CD'] = 'E12000007'
 
 # finding a mismatch between the original special LAs and their merged (LA, year) pairs
-vec = c()
-for (col in id_vars){
-  match1 = policydata[policydata$class == 'O',
-                    c('LAD19CD', 'year')]
-  match2 = unique(na.omit(cbind.data.frame(LAD19CD  = as.vector(unlist(policydata[, col])),
-                 year = as.vector(unlist(policydata[, 'year'])))))
-  vec = c(vec, setdiff(paste(match2$LAD19CD, match2$year), paste(match1$LAD19CD, match1$year)))
-  }
-vec = substr(vec, 1,9)
-table(vec)
-
-# those are problematic
-fix_year = c('E31000028', 'E31000040', 'E47000006', 'E47000008', 'E47000009')
-
-# the rest should be replaced with NA since they have their upper LAs
-fix_with_na = unique(vec[!vec %in% fix_year])
+# vec = c()
+# for (col in id_vars){
+#   match1 = policydata[policydata$class == 'O',
+#                     c('LAD19CD', 'year')]
+#   match2 = unique(na.omit(cbind.data.frame(LAD19CD  = as.vector(unlist(policydata[, col])),
+#                  year = as.vector(unlist(policydata[, 'year'])))))
+#   vec = c(vec, setdiff(paste(match2$LAD19CD, match2$year), paste(match1$LAD19CD, match1$year)))
+#   }
+# vec = substr(vec, 1,9)
+# table(vec) # should be < table of extent 0 >
 
 # SC to SD
+policydata %<>% left_join(scd_codes, by = 'LAD19CD')
 
-
+# in 2020 police name for Buckinghamshire changed due to restructuring of the LAD
+# (although I use data up until 2019, police codes are available for 2020)
+policydata[policydata$UTLACD %in% 'E10000002', 'PFA20CD'] = "E23000029"
 
 # find percentage for each lower tier la
-policydata$class2 = ifelse(policydata$class == 'SC', 'SD', policydata$class)
-policydata %<>% group_by(year, class2) %>%
-  mutate(pop_pct_scd = ifelse(class == 'SD', pop/first(pop), 1)) %>%
-  ungroup()
+table(policydata[is.na(policydata$UTLACD), 'class'])
+id_vars = c('CAUTH19CD', 'NPARK22CD', 'FRA19CD', 'PFA20CD', 'waste', 'UTLACD')
+
+policydata %<>%
+  group_by(CAUTH19CD, year) %>%
+  mutate(pct_cmb = pop/sum(pop)) %>% 
+  group_by(NPARK22CD, year) %>%
+  mutate(pct_prk = pop/sum(pop))%>% 
+  group_by(FRA19CD, year) %>%
+  mutate(pct_fr = pop/sum(pop))%>% 
+  group_by(PFA20CD, year) %>%
+  mutate(pct_plc = pop/sum(pop))%>% 
+  group_by(waste, year) %>%
+  mutate(pct_wst = pop/sum(pop))%>% 
+  group_by(UTLACD, year) %>%
+  mutate(pct_ut = pop/sum(pop))
+
+# separating between datasets
+
+ut_other = policydata %>% ungroup() %>%
+  filter(class %in% c('O', 'SC')) %>%
+  select(code:year, education:total)
+
+spends = policydata %>% ungroup() %>%
+  filter(!class %in% c('O', 'SC'))
+
+join_cols <- c('CAUTH19CD', 'NPARK22CD', 'FRA19CD', 'PFA20CD', 'waste', 'UTLACD')
+suffixes = c('_cmb', '_prk', '_fr', '_plc', '_wst', '_ut')
+
+# Perform the joins in a loop
+for (i in 1:length(join_cols)) {
+  col_name = join_cols[i]
+  suffix = c('', suffixes[i])
+  colnames(spends)[colnames(spends) == col_name] = 'id'
+  spends = spends %>%
+    left_join(ut_other %>% select(id = LAD19CD, year,
+                                  education:total),
+              by = c('id', 'year'),
+              suffix = suffix)
+  colnames(spends)[colnames(spends) == 'id'] = col_name
+}
+
+# multiplying by the respective population proportions
+
+for (suffix in suffixes) {
+  cols = names(spends)[grep(suffix, names(spends))]
+  spends = spends %>%
+    mutate(across(cols[2:length(cols)], ~ . * !!rlang::sym(cols[1])))
+}
+
+# summing with the lad-specific values and obtaining per capita
+policy_cols = colnames(spends %>% select(education:total))
+
+for (i in policy_cols){
+  spends = spends %>%
+  mutate(!!rlang::sym(i) := rowSums(select(., starts_with(i)), na.rm = TRUE)/pop)
+}
+
+policy_df = spends %>% select(code:total)
+
 
 
 
