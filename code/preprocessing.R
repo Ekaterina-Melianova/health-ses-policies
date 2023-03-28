@@ -53,7 +53,7 @@ upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data
     spend_names = c(spend_names, gsub('_Services|_Net|_Gross|Expen_PerCap|Expen_PerCap|\\.', '',
                                       colnames(i)[6]))
   }
-  colnames(spend_data) = c('year', 'LAD21CD', 'name', 'pop', tolower(spend_names))
+  colnames(spend_data) = c('year', 'LAD19CD', 'name', 'pop', tolower(spend_names))
   
   if (type == 'gross'){
     spend_data %<>% dplyr::rename(social_care_children = children_social_care,
@@ -78,7 +78,7 @@ spend_data_net  = upload_la_finance(type = 'net',
                                     starts_from = 1,
                                     ends_with = 14)
 spend_all = spend_data_gross %>%
-  full_join(spend_data_net[,-c(3,4)], by = c('year', 'LAD21CD'))
+  full_join(spend_data_net[,-c(3,4)], by = c('year', 'LAD19CD'))
 summary(spend_all)
 cort = cor(na.omit(spend_all[,c(5:32)]))
 
