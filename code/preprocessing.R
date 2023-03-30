@@ -44,7 +44,7 @@ upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data
   spend_data = list %>% 
     purrr::reduce(dplyr::full_join, by = merge_by) 
   
-  spend_data = spend_data[, c(1:3, 5, grep('PerCap', names(spend_data)))]
+  spend_data = spend_data[, c(1:4, grep('PerCap', names(spend_data)))]
   names(spend_data)
   
   # naming columns
