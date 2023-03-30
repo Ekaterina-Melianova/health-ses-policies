@@ -431,7 +431,7 @@ policydata = policydata %>%
                      housing, public_health, police, fire), mean)) %>%
   select(code, LAD19CD, la, class, year, pop, education, social_care_children,
          social_care_adult, public_health, housing, transport, cultural,
-         environment, planning, police, fire, other, all_of(id_vars))
+         environment, planning, police, fire, central, other, all_of(id_vars))
 
 policydata %<>%
   group_by(CAUTH19CD, year) %>%
@@ -531,10 +531,10 @@ for (i in seq_along(colnames_1)) {
   colname_2 <- colnames_2[i]
   test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
 }
-summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
+# summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
 
 spending_data = policy_df %>% select(year,
-                              LAD19CD,
+                              LAD21CD = LAD19CD,
                               name = la,
                               pop,
                               education,
@@ -547,6 +547,7 @@ spending_data = policy_df %>% select(year,
                               planning,
                               police,
                               fire,
+                              central,
                               other)
 # n = df_fin %>% group_by(LAD19CD) %>% summarise(n = n())
 write.csv(spending_data, 'C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')

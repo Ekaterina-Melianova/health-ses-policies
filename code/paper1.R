@@ -60,7 +60,7 @@ hist(df$samhi_index, breaks = 30)
 # final dataset - wide format
 df_lavaan_mental = lavaan_df(dv = 'samhi_index',
                              df = df,
-                             max_time = 6)
+                             max_time = 7)
 df_lavaan_mental = as.data.frame(na.omit(df_lavaan_mental))
 summary(df_lavaan_mental)
 
@@ -111,9 +111,8 @@ fm_growth_impulses_fit = fitmeasures(growth_impulses_fit, measures)
 growth_impulses_pastst_syntax = RC_GCLM_syntax(model = 'gclm',
                                                impulses = T,
                                                past_states = T,
-                                               max_time = 6,
-                                               control = c(control_names))
-growth_impulses_pastst_fit_nc = sem(growth_impulses_pastst_syntax,
+                                               max_time = 7)
+growth_impulses_pastst_fit = sem(growth_impulses_pastst_syntax,
                                  data = df_lavaan_mental, 
                                  estimator = "mlr",
                                  orthogonal = T, 
@@ -121,7 +120,6 @@ growth_impulses_pastst_fit_nc = sem(growth_impulses_pastst_syntax,
 )
 beepr::beep()
 summary(growth_impulses_pastst_fit, standardized=T)
-summary(growth_impulses_pastst_fit_nc, standardized=T)
 fm_growth_impulses_pastst_fit = fitmeasures(growth_impulses_pastst_fit, measures)
 gc()
 

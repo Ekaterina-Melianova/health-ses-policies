@@ -559,10 +559,10 @@ lavaan_df = function(dv,
                      ids = c('lsoa11',
                              'MSOA11CD',
                              'LAD21CD'),
-                     invariant = c(control_names, lad_inc_vars),
+                     invariant = control_names,
                      deprivation_cat = NULL,
                      time = 'time',
-                     max_time = 6,
+                     max_time = 7,
                      df){
 
   lookup = setNames(c(dv, ivs), c(dv_map, ivs_map))
