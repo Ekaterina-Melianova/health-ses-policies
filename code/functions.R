@@ -1,33 +1,39 @@
 
-# normalise
+# normalize
 
 normalize = function(x, na.rm = T)
   return((x - min(x)) /(max(x)- min(x)))
 
-policy_names_6 = c('health',
+policy_names_6 = c('social_care_adult',
+                   'social_care_children',
                    'healthcare',
-                   'education',
                    'env',
                    'law_order',
-                   'infrastructure')
+                   'infrastructure'#,
+                  # 'public_health'
+                   )
 
-control_names = c('lsoa_ses_score',
+control_names = c('public_health_mean',
+                  'inc_mean',
+                  'lsoa_ses_score',
                   'pop_census11',
                   'nonwhite',
                   'females',
                   'older',
                   'n',
                   
-                  'rural')
+                  'rural',
+                  'London',
+                  'SD')
 health_vars = c('samhi_index',
                 'z_mh_rate',
                 'antidep_rate',
                 'est_qof_dep',
                 'prop_ibesa')
 
-lad_inc_vars = paste0(policy_names_6[-2], '_inc')
+#lad_inc_vars = paste0(policy_names_6[-2], '_inc')
 
-endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir')
+endogeneous = c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'fr')
 
 measures = c('npar',
              'chisq.scaled',
@@ -48,12 +54,13 @@ nm_out = c('', 'Mental Health Index',
            'Depression Rate',
            'Antidepressants Rate',
            'Hospital Attendances Score',
-           'Public Health & Social Care',
+           'Adult Social Care',
+           'Children Social Care',
            'Healthcare',
-           'Education',
            'Environment',
            'Law and Order',
            'Infrastructure',
+           'Public Health Average',
            'IMD (inc., educ., empl. domains)',
            'LSOA population size',
            'Non-white, LSOA prop.',
@@ -64,9 +71,17 @@ nm_out = c('', 'Mental Health Index',
 
 # Random Effects GCLM lavaan syntax
 
-RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir'),
-                          reverse = c('he', 'hc'),
-                          full = F,
+RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
+                                          'en', 'lo', 'fr'
+                                          ),
+                          reverse = c('as', 'cs', 'hc', 'ph',
+                                      'en', 'lo', 'fr'
+                                      ),
+                          full = T,
+                          no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
+                                        'sen ', 'slo ', 'sfr ',
+                                        '~~ sHE', '~~ sas', '~~ scs', '~~ shc',
+                                        '~~ sen', '~~ slo', '~~ sfr'),
                           control = control_names,
                           max_time = 7,
                           impulses = T,
@@ -74,9 +89,10 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
                           cross = T,
                           multiple = F,
                           resid_stationary = T,
+                          stationary = T,
                           group_equality = NULL,
                           restricted_pars = NULL,
-                          model = 'gclm'){
+                          model = 'regclm'){
   require(dplyr)
   n_var = length(endogeneous)
   
@@ -97,16 +113,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
     glue_collapse("\n")
   Slope_Mean = map(endogeneous, ~  glue("s{.x} ~ 1")) %>%
     glue_collapse("\n")
-  
-  #Intercept_Var = map(endogeneous, ~  glue("i{.x} ~~ vari{.x}*i{.x}")) %>%
-  #  glue_collapse("\n")
-  #Slope_Var = map(endogeneous, ~  glue("s{.x} ~~ vars{.x}*s{.x}")) %>%
-  #  glue_collapse("\n")
-  #Intercept_Mean = map(endogeneous, ~  glue("i{.x} ~ meani{.x}*1")) %>%
-  #  glue_collapse("\n")
-  #Slope_Mean = map(endogeneous, ~  glue("s{.x} ~ means{.x}*1")) %>%
-  #  glue_collapse("\n")
-  
+
   A = map(endogeneous, ~ glue("{.x}{1:max_time}") %>%
             glue_collapse(" + ") %>%
             glue(., " ~ 0*1")) %>%
@@ -125,7 +132,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
   
 # covar
 
-  if(n_var > 2){
+  if(n_var > 1){
     iscov = expand_grid(x = endogeneous,
                          y = endogeneous) %>%
       filter(!x == y) %>%
@@ -394,7 +401,6 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
         glue_collapse("\n")
   }
   
-  
   # Impulses and Past States
   
   #Reg = Reg_
@@ -440,6 +446,27 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
       Reg = gsub(left_hand_side[i], '', Reg)
       Reg = gsub('\n', '', Reg)
     }
+  }
+  
+  # stationary
+  
+  if(stationary == F){
+    #Reg = gsub("\\s\\S*\\*", " ", Reg)
+    Var_Resid = gsub("\\s\\S*\\*", " ", Var_Resid)
+    Cov_Resid = gsub("\\s\\S*\\*", " ", Cov_Resid)
+  }
+  
+  # reclpm
+  if(model == 'reclpm'){
+    
+    # Split the glue object by line
+    Reg_lines <- strsplit(Reg, "\n")[[1]]
+    # Remove all terms starting from "b_" and add "e_" in front of each line
+    modified_lines = gsub("b_[^+]+\\+", "", Reg_lines, perl = TRUE)
+    modified_lines = gsub("\\s+", " ", modified_lines)
+    modified_lines = paste0("e_", modified_lines)
+    Reg = glue(paste(modified_lines, collapse = "\n"))
+    
   }
 
   # printing
@@ -521,6 +548,10 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
                        # Control variables
                        
                        {Control}
+                       
+                       #
+                       
+                       
                        ')
   }
   
@@ -540,7 +571,26 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'i
 
   }
   
-  syntax_rigclm
+  
+  # curve
+  
+  if(length(no_slopes) > 0){
+    # split the string into separate equations
+    syntax_rigclm_spl = strsplit(syntax_rigclm, "\n")[[1]]
+    
+    # loop through the equations and add a '#' at the beginning if it contains the search character
+    for (i in seq_along(syntax_rigclm_spl)) {
+      for (no_slope in no_slopes) {
+        if (grepl(no_slope, syntax_rigclm_spl[i])) {
+          syntax_rigclm_spl[i] = paste0("#", syntax_rigclm_spl[i])
+        }
+      }
+    }
+    syntax_rigclm = glue(paste(syntax_rigclm_spl, collapse = "\n"))
+  }
+  
+  
+  return(syntax_rigclm)
   
 }
 
@@ -551,14 +601,19 @@ ex
 # wide data for lavaan
 
 lavaan_df = function(dv,
-                     ivs = c('health', 'healthcare','education',
-                             'env', 'law_order', 'infrastructure'),
+                     ivs = c('social_care_adult',
+                             'social_care_children',
+                             'healthcare',
+                             'env', 'law_order', 'infrastructure',
+                             'public_health'),
                      dv_map = 'HE',
-                     ivs_map = c('he', 'hc','ed',
-                                 'en', 'lo', 'ir'),
+                     ivs_map = c('as', 'cs','hc',
+                                 'en', 'lo', 'fr',
+                                 'ph'),
                      ids = c('lsoa11',
                              'MSOA11CD',
-                             'LAD21CD'),
+                             'LAD21CD',
+                             'class'),
                      invariant = control_names,
                      deprivation_cat = NULL,
                      time = 'time',
@@ -761,8 +816,8 @@ plot_effects = function(models = growth_impulses_pastst_fit,
 
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
-                        end = paste0(c('HE', 'he', 'hc', 'ed', 'en', 'lo', 'ir'), '1'),
-                        impulses = paste0(c('e_HE', 'e_he', 'e_hc', 'e_ed', 'e_en', 'e_lo', 'e_ir'), '1'),
+                        end = paste0(c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'ir'), '1'),
+                        impulses = paste0(c('e_HE', 'e_as', 'e_cs', 'e_hc', 'e_en', 'e_lo', 'e_ir'), '1'),
                         growth = NULL){
   require(data.table)
   
@@ -842,9 +897,9 @@ CoefsExtract = function(models = NULL,
     mutate(
       long_or_short = ifelse(grepl('e_', id), 'short', 'long'),
       num = case_when(
-        grepl('hc', id) ~ 2,
-        grepl('he', id, ignore.case = FALSE) ~ 3,
-        grepl('ed', id) ~ 4,
+        grepl('as', id) ~ 2,
+        grepl('cs', id, ignore.case = FALSE) ~ 3,
+        grepl('hc', id) ~ 4,
         grepl('en', id) ~ 5,
         grepl('lo', id) ~ 6,
         grepl('ir', id) ~ 7,
@@ -867,12 +922,24 @@ CoefsExtract = function(models = NULL,
   columns <- colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
   
   for (i in columns) {
-    colending <- sub('est.std', '', i)
-    coefs_wide[[i]] <- paste0(sprintf("%.3f", as.numeric(coefs_wide[[i]])),
-                              coefs_wide[[paste0('pvalue', colending)]],
+    colending = sub('est.std', '', i)
+    coef =  as.numeric(coefs_wide[[i]])
+    #signif = coefs_wide[[paste0('pvalue', colending)]]
+    se = as.numeric(coefs_wide[[paste0('se', colending)]])
+    for (row in seq_along(coef)){
+      if(!coefs_wide[[i]][row]==''&!is.na(coefs_wide[[i]][row])){
+        coefs_wide[[i]][row] = paste0(sprintf("%.3f", coef[row]),
+                              #signif,
                               ' [',
-                              sprintf("%.3f", as.numeric(coefs_wide[[paste0('se', colending)]])),
+                              sprintf("%.3f", coef[row] - qt(0.975, df = Inf)*se[row]),
+                              '; ',
+                              sprintf("%.3f",coef[row] + qt(0.975, df = Inf)*se[row]),
                               ']')
+      } else{
+        coefs_wide[[i]][row] = ''
+      }
+    }
+
   }
   
   coefs_wide <- coefs_wide %>%
@@ -998,7 +1065,7 @@ summarize_data <- function(dat = df_before_scaling,
   vars_used <- c(.nonstationary, .stationary)
   stat_names = names(stat)
   
-  # summary for nonstationary
+  # summary for non stationary
   sumstat <- dat %>%
     select(all_of(.nonstationary), year) %>%
     group_by(year) %>%

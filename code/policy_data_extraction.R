@@ -59,7 +59,7 @@ for (i in seq_along(POLICYDATA_LIST)){
 
 # extracting  columns with Total Expenditure
 
-main_col = 'Total Expenditure'
+main_col = c('Total Expenditure|Net Current Expenditure')
 
 # ids
 ids = c('E-code',
@@ -107,20 +107,23 @@ for (i in seq_along(POLICYDATA)){
 }
 
 # renaming columns
-general_policies = c('education',
-                     'highways_transport',
-                     'children_social_care',
-                     'adult_social_care',
+general_policies_ = c('education',
+                     'transport',
+                     'social_care_children',
+                     'social_care_adult',
                      'public_health',
                      'housing',
                      'cultural',
-                     'environmental',
-                     'planning_development',
+                     'environment',
+                     'planning',
                      'police',
-                     'fire_rescue',
+                     'fire',
                      'central',
                      'other',
                      'total')
+general_policies_2 = rep(general_policies_, each = 2)
+suffix = rep(c("_total", "_net"), length(general_policies_))
+general_policies = paste0(general_policies_2, suffix)
 
 # 2013
 ids.1 = c('code',
@@ -193,7 +196,7 @@ length(POLICYDATA[POLICYDATA$LAD == 'n/a'& !is.na(POLICYDATA$LAD),'LAD']) == 0
 # replace '...'
 POLICYDATA <- POLICYDATA %>% 
   mutate_all(~ifelse(. == "…", NA, .))  %>%
-  mutate_at(vars(education:total), as.numeric)
+  mutate_at(vars(general_policies), as.numeric)
 POLICYDATA %<>% rename(LAD19CD = LAD)
 
 # population data
@@ -246,16 +249,16 @@ policydata = POLICYDATA %>%
 # spline for Isles of Scilly and Dorset Police and Crime Commissioner and Chief Constable
 scilly_imputed = policydata %>% group_by(LAD19CD) %>%
   filter(LAD19CD %in% 'E06000053') %>%
-  mutate(across(education:total, ~ imputeTS::na_ma(.))) 
+  mutate(across(general_policies, ~ imputeTS::na_ma(.))) 
 police_dorset_imputed = policydata %>% group_by(LAD19CD) %>%
   filter(LAD19CD %in% 'E23000039') %>%
-  mutate(across(education:total, ~ imputeTS::na_ma(.))) 
+  mutate(across(general_policies, ~ imputeTS::na_ma(.))) 
 
 policydata[policydata$LAD19CD %in% 'E06000053',] = scilly_imputed
 policydata[policydata$LAD19CD %in% 'E23000039',] = police_dorset_imputed
 
 # out
-policydata %<>% select(code:total)
+policydata %<>% select(code:total_net)
 policydata = as.data.frame(policydata)
 
 # LADs for 4 Transport Authorities in 2013 are missing because they were replaced
@@ -414,24 +417,22 @@ policydata[policydata$UTLACD %in% 'E10000002', 'PFA20CD'] = "E23000029"
 # find percentage for each lower tier la
 table(policydata[is.na(policydata$UTLACD), 'class']) # should be 'O  SC'
 
+general_policies_2 <- rep(general_policies, each = 2)
+suffix <- rep(c("_1", "_2"), length(general_policies))
+paste0(general_policies_2, suffix)
+
+vars_sum = names(policydata)[grep('transport|cultural|environment|planning|central|other', names(policydata))]
+vars_mean = names(policydata)[grep('education|social_care_children|social_care_adult|housing|public_health|police|fire', names(policydata))]
+general_policies = general_policies[1:(length(general_policies)-2)] # remove total
+
 policydata = policydata %>%
-  group_by(LAD19CD, year)  %>% 
-  rename(fire = fire_rescue,
-         planning = planning_development,
-         environment = environmental,
-         social_care_children = children_social_care,
-         social_care_adult = adult_social_care,
-         transport = highways_transport) %>%
-  summarise(across(c(transport, cultural,
-                     environment, planning,
-                     central, other), sum),
+  group_by(LAD19CD, year) %>%
+  summarise(across(all_of(vars_sum), sum),
             across(c(code, la, class, pop, all_of(id_vars)),
                    function(x) data.table::first(x)),
-            across(c(education, social_care_children, social_care_adult,
-                     housing, public_health, police, fire), mean)) %>%
-  select(code, LAD19CD, la, class, year, pop, education, social_care_children,
-         social_care_adult, public_health, housing, transport, cultural,
-         environment, planning, police, fire, central, other, all_of(id_vars))
+            across(all_of(vars_mean), mean)) %>%
+  select(code, LAD19CD, la, class, year, pop, 
+         all_of(general_policies), all_of(id_vars))
 
 policydata %<>%
   group_by(CAUTH19CD, year) %>%
@@ -451,7 +452,7 @@ policydata %<>%
 
 ut_other = policydata %>% ungroup() %>%
   filter(class %in% c('O', 'SC')) %>%
-  select(code:year, education:other)
+  select(code:year, general_policies)
 
 spends = policydata %>% ungroup() %>%
   filter(!class %in% c('O', 'SC'))
@@ -467,7 +468,7 @@ for (i in 1:length(join_cols)) {
   spends = spends %>%
     ungroup() %>%
     left_join(ut_other %>% select(id = LAD19CD, year,
-                                  education:other),
+                                  general_policies),
               by = c('id', 'year'),
               suffix = suffix)
   colnames(spends)[colnames(spends) == 'id'] = col_name
@@ -482,17 +483,18 @@ for (suffix in suffixes) {
 }
 
 # summing with the lad-specific values and obtaining per capita
-policy_cols = colnames(spends %>% select(education:other))
+policy_cols = colnames(spends %>% select(general_policies))
 
 for (i in policy_cols){
   spends = spends %>%
-  mutate(!!rlang::sym(i) := rowSums(select(., starts_with(i)), na.rm = TRUE)/pop)
+  mutate(!!rlang::sym(i) := (rowSums(select(., starts_with(i)), na.rm = TRUE)/pop)*1000)
 }
 
 policy_df = spends %>% select(code:UTLACD)
 
 policy_df %<>% group_by(LAD19CD, year)  %>%
-  mutate(social_care = social_care_children + social_care_adult) %>%
+  mutate(social_care_total = social_care_children_total + social_care_adult_total,
+         social_care_net = social_care_children_net + social_care_adult_net) %>%
   ungroup()
 
 # remove the changed parts of Suffolk
@@ -516,39 +518,40 @@ policy_df %<>% filter(!LAD19CD %in% c('E06000059',
                                        ))
 
 
-# testing the difference with 2018 data by Alexiou and Barr
-test = spend_data_gross %>% 
-  left_join(policy_df, by = c('year', 'LAD19CD')) %>%
-  filter(!is.na(education.y)) 
-
-policy_cols_new = colnames(policy_df %>% select(education:other, social_care))
-colnames_1 <- paste0(policy_cols_new, '.x')
-colnames_2 <- paste0(policy_cols_new, '.y')
-
-# subtract each pair of columns ending in "1" and "2"
-for (i in seq_along(colnames_1)) {
-  colname_1 <- colnames_1[i]
-  colname_2 <- colnames_2[i]
-  test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
-}
-# summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
+# # testing the difference with 2018 data by Alexiou and Barr
+# test = spend_data_gross %>% 
+#   left_join(policy_df, by = c('year', 'LAD19CD')) %>%
+#   filter(!is.na(education.y)) 
+# 
+# policy_cols_new = colnames(policy_df %>% select(education:other, social_care))
+# colnames_1 <- paste0(policy_cols_new, '.x')
+# colnames_2 <- paste0(policy_cols_new, '.y')
+# 
+# # subtract each pair of columns ending in "1" and "2"
+# for (i in seq_along(colnames_1)) {
+#   colname_1 <- colnames_1[i]
+#   colname_2 <- colnames_2[i]
+#   test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
+# }
+# # summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
 
 spending_data = policy_df %>% select(year,
+                                     class,
                               LAD21CD = LAD19CD,
                               name = la,
                               pop,
-                              education,
-                              social_care,
-                              public_health,
-                              housing,
-                              transport,
-                              cultural,
-                              environment,
-                              planning,
-                              police,
-                              fire,
-                              central,
-                              other)
+                              general_policies,
+                              social_care_total,
+                              social_care_net)
+
+# compute incomes
+general_policies_ = general_policies_[1:(length(general_policies_)-1)] # remove total
+
+for (nm in general_policies_) {
+  cols = grep(paste0("^", nm), names(spending_data), value=TRUE)
+  spending_data[paste0(nm, "_inc")] = spending_data[,cols[1]] - spending_data[,cols[2]]
+}
+
 # n = df_fin %>% group_by(LAD19CD) %>% summarise(n = n())
 write.csv(spending_data, 'C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')
 

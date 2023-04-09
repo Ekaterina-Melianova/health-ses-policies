@@ -15,10 +15,10 @@ library(ggpubr)
 library(stargazer)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
-options(max.print=600)
 
 # load
 spending_data = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')[-1]
+names(spending_data) <- gsub("_total", "", names(spending_data))
 
 # def
 deflator = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/Financial/GDP_Deflators_Budget_March_2021_update.xlsx',
@@ -32,7 +32,7 @@ spending_data = spending_data %>%
 
 # in prices of 2020
 spending_data %<>%
-  mutate(across(education:other, ~ . * def / 100))
+  mutate(across(education:other_inc, ~ . /def*100 ))
 
 # Small Area Mental Health Index (SAMHI)
 health_lsoa = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/samhi_21_01_v4.00_2011_2019_LSOA_tall.csv')
@@ -185,7 +185,7 @@ df %<>% left_join(controls_census, by = 'lsoa11')
 # number of lsoas within each lad
 df %<>% group_by(LAD21CD) %>% dplyr::mutate(n = n())
 
-# filtering City of London
+# filtering City of London and Isles of Scilly
 df %<>% filter(!LAD21CD %in% c('E09000001',
                                'E06000053')) %>%
   ungroup()
@@ -195,19 +195,24 @@ df = as.data.frame(df)
 df$time = df$year - (min(df$year)-1)
 
 # policy groups
-df$public_health = ifelse(is.na(df$public_health), 0, df$public_health)
-df$health = df$social_care + df$public_health
-df$healthcare = df$ccg/1000 # to make it in thousand £ as other spends
+#df$public_health = ifelse(is.na(df$public_health), 0, df$public_health)
+df$health = df$social_care #+ df$public_health
+df$healthcare = df$ccg#/1000 # to make it in thousand £ as other spends
 df$env = df$environment + df$planning + df$cultural
 df$education = df$education
 df$law_order = df$housing + df$police
 df$infrastructure = df$transport + df$fire + df$central + df$other
 df$total = df$health + df$healthcare + df$education + df$env + df$law_order + df$infrastructure
+df %<>% group_by(LAD21CD) %>%
+  mutate(public_health_mean = mean(public_health))
 
+# inc average
+df = cbind.data.frame(df, 'inc' = rowMeans(df[, grep("inc$", names(df))]))
+df %<>% group_by(LAD21CD) %>%
+  mutate(inc_mean = mean(inc))
 summary(df)
 
 #df = df %>% filter(housing_transport > 0 & environment_planning_cultural > 0 & pub_health_soc_care > 0)
-
 
 # saving the final df
 saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
