@@ -22,15 +22,16 @@ options(max.print=3900)
 # loading the data
 df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
 
-
 # out
-rm = c('E07000211', 'E06000019',
-       'E06000039', 'E09000018',
-       'E06000012',
-       'E06000036')
+# rm = c('E07000211', 'E06000019',
+#        'E06000039', 'E09000018',
+#        'E06000012',
+#        'E06000036'
+#        )
 
-df %<>% filter(!LAD21CD %in% rm) #%>% filter(year >2013)
-df$time = df$year - (min(df$year)-1)
+# df %<>% filter(!LAD21CD %in% rm)# %>% filter(year > 2013)
+# df$time = df$year - (min(df$year)-1)
+# table(df$time)
 
 # a dataset for descriptive stat
 df_before_scaling = df
@@ -40,12 +41,7 @@ df_before_scaling$est_qof_dep = -df_before_scaling$est_qof_dep
 df_before_scaling$prop_ibesa = -df_before_scaling$prop_ibesa
 df_before_scaling$samhi_index = -df_before_scaling$samhi_index
 
-# df %<>% filter(year %in% c(2013, 2015, 2017, 2019)) %>%
-#   mutate(time2 = case_when(time == 1 ~ 1,
-#                            time == 3 ~ 2,
-#                            time == 5 ~ 3,
-#                            time == 7 ~ 4))
-# table(df$time2)
+
 
 # normalising from 0 to 10 to facilitate the convergence of SEM models
 for (i in c(health_vars,
@@ -106,7 +102,8 @@ hist(df$public_health, breaks = 30)
 # Sequential
 
 # 1. RI-CLPM
-riclpm_syntax = RC_GCLM_syntax(model = 'reclpm')
+riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
+                               no_slopes = no_slopes)
 riclpm_fit = sem(riclpm_syntax,
                  data = df_lavaan_mental, 
                  estimator = "mlr",
@@ -116,21 +113,21 @@ riclpm_fit = sem(riclpm_syntax,
 fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
 #summary(riclpm_fit, standardized=T)
 
-# # 2. RC-CLPM
-# rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
-#                                no_slopes = NULL)
-# rcclpm_fit = sem(rcclpm_syntax,
-#                  data = df_lavaan_mental,
-#                  estimator = "mlr",
-#                  orthogonal = T,
-#                  cluster = 'LAD21CD'
-# )
-# beepr::beep()
-# fm_rcclpm_fit = fitmeasures(rcclpm_fit, measures)
-# # #summary(rcclpm_fit, standardized=T)
+# 2. RC-CLPM
+rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm')
+rcclpm_fit = sem(rcclpm_syntax,
+                 data = df_lavaan_mental,
+                 estimator = "mlr",
+                 orthogonal = T,
+                 cluster = 'LAD21CD'
+)
+beepr::beep()
+fm_rcclpm_fit = fitmeasures(rcclpm_fit, measures)
+# summary(rcclpm_fit, standardized=T)
 
 # 3. RI-GCLM
-regclm_syntax = RC_GCLM_syntax(model = 'regclm')
+regclm_syntax = RC_GCLM_syntax(model = 'regclm',
+                               no_slopes = no_slopes)
 regclm_fit = sem(regclm_syntax,
                  data = df_lavaan_mental, 
                  estimator = "mlr",
@@ -140,11 +137,11 @@ regclm_fit = sem(regclm_syntax,
 beepr::beep()
 fm_regclm_fit = fitmeasures(regclm_fit, measures)
 #summary(regclm_fit, standardized=T)
+gc()
 
-# 4.1 RC-GCLM
-rcgclm_syntax = RC_GCLM_syntax(model = 'regclm',
-                               no_slopes = NULL,
-                               full = T)
+
+# 4. RC-GCLM
+rcgclm_syntax = RC_GCLM_syntax(model = 'regclm')
 rcgclm_fit = sem(rcgclm_syntax,
                  data = df_lavaan_mental, 
                  estimator = "mlr",
@@ -156,9 +153,8 @@ beepr::beep()
 fm_rcgclm_fit = fitmeasures(rcgclm_fit, measures)
 gc()
 
-# 4.2 Health only
+# 5. Health only
 rcgclm_syntax_h = RC_GCLM_syntax(model = 'regclm',
-                                 no_slopes = NULL,
                                  endogeneous = c('HE', 'as', 'cs', 'hc')
                                  )
 rcgclm_fit_h = sem(rcgclm_syntax_h,
@@ -174,42 +170,9 @@ fm_rcgclm_fit_h = fitmeasures(rcgclm_fit_h, measures)
 # ---------------------------------------------------------------------
 # ------------------------------- Robustness --------------------------
 # ---------------------------------------------------------------------
-
-# 1. Outliers
-
-remove_outliers <- function(x, na.rm = TRUE) {
-  qnt <- quantile(x, probs = c(.25, .75), na.rm = na.rm)
-  H <- 3*IQR(x, na.rm = na.rm)
-  x[x > (qnt[2] + H)] <- NA
-  x[x < (qnt[1] - H)] <- NA
-  x
-}
-
-df_outliers = df %>% group_by(year) %>%
-  mutate_at(vars(all_of(c(policy_names_6,
-                          'samhi_index'))), remove_outliers) %>%
-  na.omit()
-df_lavaan_outliers = lavaan_df(dv = 'samhi_index',
-                               df = df_outliers)
-df_lavaan_outliers = as.data.frame(na.omit(df_lavaan_outliers))
-#summary(df_lavaan_outliers)
-
-
-rcgclm_outliers_fit = sem(rcgclm_syntax,
-                 data = df_lavaan_outliers, 
-                 estimator = "mlr",
-                 orthogonal = T, 
-                 cluster = 'LAD21CD'
-)
-beepr::beep()
-#summary(rcgclm_outliers_fit, standardized=T)
-fm_rcgclm_outliers_fit = fitmeasures(rcgclm_outliers_fit, measures)
-
-# 2. London
+# 1. Without London
 rcgclm_syntax_L = RC_GCLM_syntax(model = 'regclm',
-                                 no_slopes = NULL,
-                                 full = T,
-                                 control = control_names[-10])
+                                 control = control_names[!control_names %in% 'London'])
 rcgclm_L_fit = sem(rcgclm_syntax_L,
                    data = df_lavaan_mental[!df_lavaan_mental$class == 'L',], 
                    estimator = "mlr",
@@ -218,70 +181,93 @@ rcgclm_L_fit = sem(rcgclm_syntax_L,
 )
 beepr::beep()
 #summary(rcgclm_L_fit, standardized=T)
-fm_rcgclm_L_fit = fitmeasures(rcgclm_outliers_fit, measures)
+fm_rcgclm_L_fit = fitmeasures(rcgclm_L_fit, measures)
 
-# # # Drop 2014
-# # 
-# df_no14 = df %>% filter(year > 2014)
-# df_no14$time = df_no14$year - (min(df_no14$year)-1)
-# df_lavaan_no14 = lavaan_df(dv = 'samhi_index',
-#                                df = df_no14)
-# df_lavaan_no14 = as.data.frame(na.omit(df_lavaan_no14))
+# 2. Without Outliers: 3*IQR
+
+remove_outliers = function(x, k) {
+  qnt = quantile(x, probs = c(.25, .75), na.rm = T)
+  H = k*IQR(x, na.rm = T)
+  x[x > (qnt[2] + H)] = NA
+  x[x < (qnt[1] - H)] = NA
+  x
+}
+
+df_outliers_3 = df %>% group_by(year) %>%
+  mutate_at(vars(all_of(c(policy_names_6,
+                          'samhi_index'))),
+            ~remove_outliers(., k = 3)) %>%
+  na.omit()
+df_lavaan_outliers_3 = lavaan_df(dv = 'samhi_index',
+                               df = df_outliers_3)
+df_lavaan_outliers_3 = as.data.frame(na.omit(df_lavaan_outliers_3))
+#summary(df_lavaan_outliers_3)
+
+rcgclm_outliers_3_fit = sem(rcgclm_syntax,
+                 data = df_lavaan_outliers_3, 
+                 estimator = "mlr",
+                 orthogonal = T, 
+                 cluster = 'LAD21CD'
+)
+beepr::beep()
+#summary(rcgclm_outliers_3_fit, standardized=T)
+fm_rcgclm_outliers_3_fit = fitmeasures(rcgclm_outliers_3_fit, measures)
+
+# 3. Without Outliers: 1.5*IQR
+
+df_outliers_1.5 = df %>% group_by(year) %>%
+  mutate_at(vars(all_of(c(policy_names_6,
+                          'samhi_index'))),
+            ~remove_outliers(., k = 1.5)) %>%
+  na.omit()
+df_lavaan_outliers_1.5 = lavaan_df(dv = 'samhi_index',
+                                 df = df_outliers_1.5)
+df_lavaan_outliers_1.5 = as.data.frame(na.omit(df_lavaan_outliers_1.5))
+#summary(df_lavaan_outliers_1.5)
+
+rcgclm_outliers_1.5_fit = sem(rcgclm_syntax_L,
+                            data = df_lavaan_outliers_1.5, 
+                            estimator = "mlr",
+                            orthogonal = T, 
+                            cluster = 'LAD21CD'
+)
+beepr::beep()
+#summary(rcgclm_outliers_1.5_fit, standardized=T)
+fm_rcgclm_outliers_1.5_fit = fitmeasures(rcgclm_outliers_1.5_fit, measures)
+
+# 3. Different time lag
+
+# df_2lag = df %>% filter(year %in% c(2013, 2015, 2017, 2019)) %>%
+#   mutate(time2 = case_when(time == 1 ~ 1,
+#                            time == 3 ~ 2,
+#                            time == 5 ~ 3,
+#                            time == 7 ~ 4))
+# table(df_2lag$time2)
 # 
-# rcgclm_syntax_ydrop = RC_GCLM_syntax(model = 'regclm',
-#                                no_slopes = NULL,
-#                                full = T,
-#                                max_time = 5)
+# df_lavaan_mental2 = lavaan_df(dv = 'samhi_index',
+#                              df = df_2lag,
+#                              time = 'time2')
+# df_lavaan_mental2 = as.data.frame(na.omit(df_lavaan_mental2))
+# #summary(df_lavaan_mental2)
 # 
-# rcgclm_no14_fit = sem(rcgclm_syntax_ydrop,
-#                           data = df_lavaan_no14,
-#                           estimator = "mlr",
-#                           orthogonal = T,
-#                           cluster = 'LAD21CD'
+# rcgclm_syntax2 = RC_GCLM_syntax(model = 'regclm',
+#                                 max_time = 4,
+#                                 no_slopes = c('sen ',
+#                                               '~~ sen'))
+# rcgclm_fit2 = sem(rcgclm_syntax2,
+#                  data = df_lavaan_mental2, 
+#                  estimator = "mlr",
+#                  orthogonal = T, 
+#                  cluster = 'LAD21CD'
 # )
 # beepr::beep()
-# #summary(rcgclm_no14_fit, standardized=T)
-# fm_rcgclm_no14_fit = fitmeasures(rcgclm_no14_fit, measures)
-# 
-# # Drop 2019
-# 
-# df_no19 = df %>% filter(year < 2019)
-# df_no19$time = df_no19$year - (min(df_no19$year)-1)
-# df_lavaan_no19 = lavaan_df(dv = 'samhi_index',
-#                            df = df_no19)
-# df_lavaan_no19 = as.data.frame(na.omit(df_lavaan_no19))
-# 
-# rcgclm_no19_fit = sem(rcgclm_syntax_ydrop,
-#                       data = df_lavaan_no19,
-#                       estimator = "mlr",
-#                       orthogonal = T,
-#                       cluster = 'LAD21CD'
-# )
-# beepr::beep()
-# #summary(rcgclm_no19_fit, standardized=T)
-# fm_rcgclm_no19_fit = fitmeasures(rcgclm_no19_fit, measures)
-# 
-## 3. Full
-# rcgclm_syntax_f = RC_GCLM_syntax(model = 'regclm',
-#                                  no_slopes = NULL,
-#                                  full = T,
-#                                  max_time = 7)
-# rcgclm_fit_f = sem(rcgclm_syntax_f,
-#                    data = df_lavaan_mental,
-#                    estimator = "mlr",
-#                    orthogonal = T,
-#                    cluster = 'LAD21CD'
-# )
-# beepr::beep()
-# fm_rcgclm_fit_f = fitmeasures(rcgclm_fit_f, measures)
-# #summary(rcgclm_fit_f, standardized=T)
+# #summary(rcgclm_fit2, standardized=T)
+# fm_rcgclm_fit2 = fitmeasures(rcgclm_fit2, measures)
 
 # ----------------------------------------------------------------------
 # Indices
 
-mental_sub_syntax = RC_GCLM_syntax(model = 'regclm',
-                                   no_slopes = NULL,
-                                   full = T)
+mental_sub_syntax = RC_GCLM_syntax(model = 'regclm')
 
 # 1. IBESA (%)
 df_lavaan_mental_sub1 = lavaan_df(dv = 'prop_ibesa',
@@ -374,7 +360,7 @@ growthcortab_m3 = GrowthCorTable(dat = temp,
                                  pars = 'est.std_long') 
 
 
-# 4. Regression Table (1)
+# 4.1 Regression Table - Main
 end_new = c('Mental Health',
                       'Adult Social Care',
                       'Children Social Care',
@@ -449,7 +435,7 @@ seq_models_coefs[10:12,1] = end_new[2:4]
 #write.table(seq_models_coefs, file = "seq_models_coefs.txt",
 #            sep = ",", quote = FALSE, row.names = F)
 
-# 5. Regression Table (2)
+# 4.2. Regression Table - Indices
 indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
                                                 'mental_sub2_fit',
                                                 'mental_sub3_fit',
@@ -475,8 +461,12 @@ indices_models_coefs[10:12,1] = end_new[2:4]
 #write.table(indices_models_coefs, file = "indices_models_coefs.txt",
 #            sep = ",", quote = FALSE, row.names = F)
 
+# 4.3 Regression Table - Sensitivity
 
-# 6. Substantive effects from all models
+
+
+
+# 5. Substantive effects from all models
 
 rng = range(log(df_before_scaling[,'social_care_adult']))
 exp(0.018*((rng[2] - rng[1])/10 + rng[2])) - 1
@@ -554,13 +544,13 @@ for (i in 1:nrow(ddf)) {
 }
 ####
 
-# 7. (Optional) Effects of Controls
+# 6. (Optional) Effects of Controls
 
 #
 #
 #
 
-# 8. Descriptive Plots
+# 7. Descriptive Plots
 library(ggpubr)
 
 all_vars = c(health_vars,
@@ -607,7 +597,7 @@ ggarrange(list_plots[[6]],
           list_plots[[8]],
           list_plots[[9]],
           list_plots[[10]],
-          list_plots[[12]],
+          list_plots[[11]],
           labels = c('Adult Social Care',
                      'Children Social Care',
                      'Healthcare',

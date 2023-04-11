@@ -69,6 +69,11 @@ nm_out = c('', 'Mental Health Index',
            'Rural, prop. of rural LSOAs',
            'Number of LSOAs in a LAD')
 
+no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
+              'sen ', 'slo ', 'sfr ',
+              '~~ sHE', '~~ sas', '~~ scs', '~~ shc',
+              '~~ sen', '~~ slo', '~~ sfr')
+
 # Random Effects GCLM lavaan syntax
 
 RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
@@ -78,10 +83,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                                       'en', 'lo', 'fr'
                                       ),
                           full = T,
-                          no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
-                                        'sen ', 'slo ', 'sfr ',
-                                        '~~ sHE', '~~ sas', '~~ scs', '~~ shc',
-                                        '~~ sen', '~~ slo', '~~ sfr'),
+                          no_slopes = NULL,
                           control = control_names,
                           max_time = 7,
                           impulses = T,
