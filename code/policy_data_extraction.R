@@ -517,24 +517,6 @@ policy_df %<>% filter(!LAD19CD %in% c('E06000059',
                                        'E06000028'
                                        ))
 
-
-# # testing the difference with 2018 data by Alexiou and Barr
-# test = spend_data_gross %>% 
-#   left_join(policy_df, by = c('year', 'LAD19CD')) %>%
-#   filter(!is.na(education.y)) 
-# 
-# policy_cols_new = colnames(policy_df %>% select(education:other, social_care))
-# colnames_1 <- paste0(policy_cols_new, '.x')
-# colnames_2 <- paste0(policy_cols_new, '.y')
-# 
-# # subtract each pair of columns ending in "1" and "2"
-# for (i in seq_along(colnames_1)) {
-#   colname_1 <- colnames_1[i]
-#   colname_2 <- colnames_2[i]
-#   test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
-# }
-# # summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
-
 spending_data = policy_df %>% select(year,
                                      class,
                               LAD21CD = LAD19CD,
@@ -554,4 +536,88 @@ for (nm in general_policies_) {
 
 # n = df_fin %>% group_by(LAD19CD) %>% summarise(n = n())
 write.csv(spending_data, 'C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')
+
+
+# ----------------------------------------------------------------------
+# testing the difference with 2018 data by Alexiou and Barr
+
+upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data/Spending',
+                             starts_from = 15,
+                             ends_with = length(list),
+                             type = c('gross', 'net'),
+                             time = 2013:2019){
+  
+  setwd(wd)
+  
+  # loading files
+  files = list.files(wd)
+  nm = substr(files, 1, nchar(files)-4)
+  list = list()
+  for(i in 1:length(files)){
+    assign(nm[i], read.csv(files[i]))
+    list[[i]] = read.csv(files[i])
+    
+  }
+  names(list) = nm
+  
+  # gross or net
+  list = list[starts_from:ends_with]
+  
+  # list to df
+  merge_by = colnames(list[[1]])[c(1,2)]
+  spend_data = list %>% 
+    purrr::reduce(dplyr::full_join, by = merge_by) 
+  
+  spend_data = spend_data[, c(1:3, 5, grep('PerCap', names(spend_data)))]
+  names(spend_data)
+  
+  # naming columns
+  spend_names = c()
+  for (i in list){
+    spend_names = c(spend_names, gsub('_Services|_Net|_Gross|Expen_PerCap|Expen_PerCap|\\.', '',
+                                      colnames(i)[6]))
+  }
+  colnames(spend_data) = c('year', 'LAD21CD', 'name', 'pop', tolower(spend_names))
+  
+  if (type == 'gross'){
+    spend_data %<>% dplyr::rename(social_care_children = children_social_care,
+                                  social_care_adult = adult_social_care,
+                                  transport = highways_and_transport_services,
+                                  environment = environmental)
+  }
+  
+  spend_data$year = as.numeric(spend_data$year)
+  spend_data %<>%
+    mutate(across(education:other, as.numeric))
+  
+  # filtering year
+  
+  spend_data %<>% filter(year %in% time)
+  
+  return(spend_data)
+}
+
+spending_data_gross_my = spending_data %>% 
+  select(!ends_with('_net') & !ends_with('_inc'))
+spend_data_gross  = upload_la_finance(type = 'gross')
+# spend_data_net  = upload_la_finance(type = 'net', 
+#                                     starts_from = 1,
+#                                     ends_with = 14)
+
+
+test = spend_data_gross %>%
+  left_join(spending_data_gross_my, by = c('year', 'LAD21CD')) %>%
+  filter(!is.na(education.y)) # remove 2019
+
+policy_cols_new = colnames(spending_data_gross_my %>% select(education:other, social_care))
+colnames_1 <- paste0(policy_cols_new, '.x')
+colnames_2 <- paste0(policy_cols_new, '.y')
+
+# subtract each pair of columns ending in "1" and "2"
+for (i in seq_along(colnames_1)) {
+  colname_1 <- colnames_1[i]
+  colname_2 <- colnames_2[i]
+  test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
+}
+# summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
 

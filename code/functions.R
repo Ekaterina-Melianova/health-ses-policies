@@ -49,25 +49,30 @@ measures = c('npar',
              'bic',
              'logl')
 
-nm_out = c('', 'Mental Health Index',
+nm_out = c('Mental Health Index',
            'Incapacity Benefits Rate',
            'Depression Rate',
            'Antidepressants Rate',
            'Hospital Attendances Score',
+           
            'Adult Social Care',
            'Children Social Care',
            'Healthcare',
            'Environment',
            'Law and Order',
            'Infrastructure',
-           'Public Health Average',
+           
+           'Public Health 7-year Average, £ per capita',
+           'LAD Income 7-year Average, £ per capita',
            'IMD (inc., educ., empl. domains)',
            'LSOA population size',
            'Non-white, LSOA prop.',
            'Females, LSOA prop.',
            'Older, LSOA prop.',
+           'Number of LSOAs in a LAD',
            'Rural, prop. of rural LSOAs',
-           'Number of LSOAs in a LAD')
+           'London',
+           'Shire Districts')
 
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
               'sen ', 'slo ', 'sfr ',
@@ -374,7 +379,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
       Control_df = data.frame(c('cntr' = control,
                                 data.frame('end' = endogeneous)))
       nam = names(Control_df %>% 
-                    select(starts_with('cntr')))
+                    dplyr::select(starts_with('cntr')))
       library(eply)
       Control_df %<>%
         dplyr::mutate(cntr_sum = ifelse(length(control) >1, 
@@ -391,7 +396,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                                 data.frame('end' = endogeneous)))
       
     nam = names(Control_df %>% 
-                  select(starts_with('cntr')))
+                  dplyr::select(starts_with('cntr')))
       Control_df %<>%
         dplyr::mutate(cntr_sum = ifelse(length(control) >1, 
                                         apply(Control_df[ , nam ] , 1 , paste , collapse = " + " ), cntr)) %>%
@@ -596,9 +601,6 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
   
 }
 
-
-ex = RC_GCLM_syntax(model = "gclm", reverse = c('ho', 'sc'))
-ex
 
 # wide data for lavaan
 
@@ -818,30 +820,83 @@ plot_effects = function(models = growth_impulses_pastst_fit,
 
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
-                        end = paste0(c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'ir'), '1'),
-                        impulses = paste0(c('e_HE', 'e_as', 'e_cs', 'e_hc', 'e_en', 'e_lo', 'e_ir'), '1'),
-                        growth = NULL){
+                        standardized = TRUE,
+                        end = paste0(c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'fr'), '1'),
+                        impulses = paste0(c('e_HE', 'e_as', 'e_cs', 'e_hc', 'e_en', 'e_lo', 'e_fr'), '1'),
+                        growth = NULL,
+                        controls = control_names,
+                        df_transform = NULL){
   require(data.table)
   
   m_out = list()
-  colnm = c("lhs", "op", "rhs", "group", "est.std", 'pvalue', 'se')
+  colnm = c("lhs", "op", "rhs", "group", 'est.std', 'pvalue', 'se')
   tech = c('lhs', 'op', 'rhs')
   
   m_out <- lapply(models, function(model) {
-    stdsol <- broom::tidy(eval(parse(text = model))) %>% 
+    
+    if (standardized == T){
+      stdsol = standardizedSolution(eval(parse(text = model)))
+     
+     # main effects - standardized
+      stdsol_main = stdsol %>% 
+        filter(
+          op == "~" & rhs %in% end |
+          op == "~1" & lhs %in% growth |
+          op == "~" & rhs %in% impulses |
+          op == "~" & rhs %in% controls
+         ) %>% 
+        dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>% 
+        mutate(id = str_c(lhs, op, rhs)) %>%
+        select(-one_of(tech))
+    
+
+    } else{
+      # main effects - unstandardized
+      stdsol_main = broom::tidy(eval(parse(text = model))) %>% 
+        separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
+        rename(est.std = std.all, se = std.error, pvalue = p.value)
+      
+      stdsol_main = stdsol_main %>%
+        select(-est.std) %>%
+        rename(est.std = estimate) %>%
+        filter(
+          op == "~" & rhs %in% end |
+          op == "~1" & lhs %in% growth |
+          op == "~" & rhs %in% impulses |
+          op == "~" & rhs %in% controls
+          ) %>%
+        dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>%
+        mutate(id = str_c(lhs, op, rhs)) %>%
+        select(-one_of(tech))
+    }
+    
+    # covariance - unstandardized always
+    stdsol_cov = broom::tidy(eval(parse(text = model))) %>% 
       separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
       rename(est.std = std.all, se = std.error, pvalue = p.value)
     
-    stdsol %>% 
+    stdsol_cov = stdsol_cov %>%
+      select(-est.std) %>%
+      rename(est.std = estimate) %>%
       filter(
-        op == "~" & rhs %in% end |
-          op == "~~" & lhs %in% growth & rhs %in% growth |
-          op == "~1" & lhs %in% growth |
-          op == "~" & rhs %in% impulses
-      ) %>% 
-      dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>% 
+          op == "~~" & lhs %in% growth & rhs %in% growth
+      ) %>%
+      dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>%
       mutate(id = str_c(lhs, op, rhs)) %>%
       select(-one_of(tech))
+    
+    stdsol_fin = rbind.data.frame(stdsol_main, stdsol_cov)
+    
+    # if reclpm_fit, remove 'e_' for the main effects
+    stdsol_fin$id <- sapply(stdsol_fin$id, function(s) {
+      if (length(gregexpr("e_", s)[[1]]) >= 2) {
+        s <- gsub("e_", "", s)
+      }
+      return(s)
+    })
+    
+    return(stdsol_fin)
+    
   })
   
   # curating
@@ -868,6 +923,8 @@ CoefsExtract = function(models = NULL,
   
   coefs_long$id <- str_replace(coefs_long$id, "~1", "~#") %>%
     gsub('[[:digit:]]+', '', .)
+  
+  
   end_ <- gsub('[[:digit:]]+', '', end)
   impulses_ <- gsub('[[:digit:]]+', '', impulses)
   
@@ -883,14 +940,20 @@ CoefsExtract = function(models = NULL,
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
       id %in% growth_variants ~ 'd_growth_cov',
-      grepl('~#', id) ~ 'd_growth_means',
-      TRUE ~ 'b_health'
+      grepl('~#', id) ~ 'e_growth_means',
+      substr(id, 6, 7) == substr(health, 1, 2) ~ 'b_health',
+      substr(id, 4, 5) == substr(health, 1, 2) ~ 'b_health',
+      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'g_controls',
+      TRUE ~ 'f_other_policies'
     )]
   } else {
     coefs_long[, type := case_when(
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
-      TRUE ~ 'b_health'
+      substr(id, 6, 7) == substr(health, 1, 2) ~ 'b_health',
+      substr(id, 4, 5) == substr(health, 1, 2) ~ 'b_health',
+      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'g_controls',
+      TRUE ~ 'f_other_policies'
     )]
   }
 
@@ -899,12 +962,12 @@ CoefsExtract = function(models = NULL,
     mutate(
       long_or_short = ifelse(grepl('e_', id), 'short', 'long'),
       num = case_when(
-        grepl('as', id) ~ 2,
-        grepl('cs', id, ignore.case = FALSE) ~ 3,
-        grepl('hc', id) ~ 4,
-        grepl('en', id) ~ 5,
-        grepl('lo', id) ~ 6,
-        grepl('ir', id) ~ 7,
+        grepl('as', substr(id, 1, 2)) ~ 2,
+        grepl('cs', substr(id, 1, 2)) ~ 3,
+        grepl('hc', substr(id, 1, 2)) ~ 4,
+        grepl('en', substr(id, 1, 2)) ~ 5,
+        grepl('lo', substr(id, 1, 2)) ~ 6,
+        grepl('fr', substr(id, 1, 2)) ~ 7,
         TRUE ~ 1
       ),
       id = sub('e_', '', id),
@@ -915,7 +978,7 @@ CoefsExtract = function(models = NULL,
   # to wide format
   
   values_from <- colnames(coefs_long)[grepl('est|pvalue|se',colnames(coefs_long))]
-  ids <- colnames(coefs_long)[colnames(coefs_long) %in% c('id', 'group')]
+  ids <- colnames(coefs_long)[colnames(coefs_long) %in% c('id', 'group', 'type')]
   
   coefs_wide <- pivot_wider(coefs_long, id_cols = all_of(ids),
                             names_from = long_or_short,
@@ -923,19 +986,31 @@ CoefsExtract = function(models = NULL,
   
   columns <- colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
   
+  # apply transformation
+  
+  if (!is.null(df_transform)){
+    coefs_wide = coefs_wide %>% left_join(df_transform, by = 'id')
+    coefs_wide$ratio = ifelse(is.na(coefs_wide$ratio), 1, coefs_wide$ratio)
+  } else{
+    coefs_wide$ratio = 1
+  }
+  
+  # forming the cells
+  
   for (i in columns) {
     colending = sub('est.std', '', i)
     coef =  as.numeric(coefs_wide[[i]])
-    #signif = coefs_wide[[paste0('pvalue', colending)]]
+    signif = coefs_wide[[paste0('pvalue', colending)]]
     se = as.numeric(coefs_wide[[paste0('se', colending)]])
+    
     for (row in seq_along(coef)){
       if(!coefs_wide[[i]][row]==''&!is.na(coefs_wide[[i]][row])){
-        coefs_wide[[i]][row] = paste0(sprintf("%.3f", coef[row]),
-                              #signif,
+        coefs_wide[[i]][row] = paste0(sprintf("%.3f", coefs_wide[row, 'ratio']*coef[row]),
+                              signif[row],
                               ' [',
-                              sprintf("%.3f", coef[row] - qt(0.975, df = Inf)*se[row]),
+                              sprintf("%.3f", coefs_wide[row, 'ratio']*(coef[row] - qt(0.95, df = Inf)*se[row])),
                               '; ',
-                              sprintf("%.3f",coef[row] + qt(0.975, df = Inf)*se[row]),
+                              sprintf("%.3f", coefs_wide[row, 'ratio']*(coef[row] + qt(0.95, df = Inf)*se[row])),
                               ']')
       } else{
         coefs_wide[[i]][row] = ''
@@ -971,7 +1046,7 @@ CoefsExtract = function(models = NULL,
     
     # sort colnames
     colnames = colnames(coefs_wide)
-    get_number <- function(x) {
+    get_number = function(x) {
       if (!x == 'id'){
         as.numeric(sub("^.*_(\\d+)$", "\\1", x))
       }
@@ -986,86 +1061,146 @@ CoefsExtract = function(models = NULL,
 }
 
 # Extracting growth curve cor tables
-GrowthCorTable = function(dat, cor_name, pars, 
-                          growth = c(paste0('i', endogeneous), 
-                                     paste0('s', endogeneous))){
+MatrixEffects = function(dat, 
+                         cor_name,
+                         pars, 
+                         colnames = c(paste0('i', endogeneous), 
+                                     paste0('s', endogeneous)),
+                         rownames = c(paste0('i', endogeneous), 
+                                      paste0('s', endogeneous)),
+                         cor = T,
+                         sep = '~~'){
   sgn = dat
-  sgn %<>% tidyr::separate(cor_name, c('X', 'Y'), '~~')
+  sgn %<>% tidyr::separate(cor_name, c('X', 'Y'), sep)
   
   # Select columns and separate the cor_name column into X and Y columns using '~~' as the separator
   dat = dat %>%
     select(all_of(cor_name), all_of(pars)) %>%
-    separate(cor_name, c('X', 'Y'), '~~') %>%
-    # Remove certain characters from the pars columns and convert to numeric type
-    mutate_at(vars(pars), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
-  
+    separate(cor_name, c('X', 'Y'), sep)
+  if (cor == T){
+    dat = dat %>%
+      mutate_at(vars(all_of(pars)), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
+    }
   # Calculate the covariance matrix
   pivot_initial = dat %>%
-    # Group by X and Y columns, and calculate mean for the pars columns
     group_by(Y, X) %>%
-    summarize(across(all_of(pars), identity)) %>%
-    # Convert to wide format with X columns as columns and Y columns as rows
+    summarize(across(all_of(pars), identity), .groups = 'drop') %>%
     pivot_wider(names_from = X, values_from = all_of(pars)) %>%
     column_to_rownames(var = "Y")
   
-  pivot_initial = t(pivot_initial[growth, growth])
+  pivot = pivot_initial[rownames, colnames]
   
-  # Convert covariance matrix to correlation matrix and remove values in lower triangle
-  pivot = as.data.frame(cov2cor(as.matrix(pivot_initial)))
-  pivot[] = lapply(pivot, sprintf, fmt = "%.2f")
-  pivot[lower.tri(pivot, diag = F)] <- ''
-  
-  # Assign the column names to the row names for the matrix
-  dimnames(pivot) = list(colnames(pivot_initial), colnames(pivot_initial))
-  
-  # Add additional information to the lower triangle of the matrix
-  for (i in seq_along(colnames(pivot))){
-    for (j in seq_along(colnames(pivot))){
-      if (i != j){
-        # Combine the correlation value with the additional information from the dat table
-        pivot[i, j] = paste0(pivot[i, j], str_replace_all(
-          sgn %>% filter(X == colnames(pivot)[i], Y == colnames(pivot)[j]) %>% pull(pars),
-          c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')))
+  if (cor == F){
+    # # Add additional information to the lower triangle of the matrix
+    # #pivot[] = lapply(pivot, sprintf, fmt = "%.2f")
+    # 
+    # for (i in seq_along(rownames(pivot))){
+    #   for (j in seq_along(colnames(pivot))){
+    #    
+    #       # Combine the correlation value with the additional information from the dat table
+    #       pivot[i, j] = paste0(pivot[i, j], str_replace_all(
+    #         sgn %>% filter(Y == rownames(pivot)[i], X == colnames(pivot)[j]) %>% pull(all_of(pars)),
+    #         #c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')
+    #         c("[:digit:]|-|\\." = '', '\\[.*\\]' = ''))
+    #         )
+    #     
+    #   }
+    # }
+    
+    
+    
+  } else{
+    pivot = t(pivot)
+    # Convert covariance matrix to correlation matrix and remove values in lower triangle
+    pivot = as.data.frame(cov2cor(as.matrix(pivot)))
+    dimnames(pivot) = list(colnames(pivot), colnames(pivot))
+    pivot[] = lapply(pivot, sprintf, fmt = "%.3f")
+    pivot[lower.tri(pivot, diag = F)] <- ''
+    
+    # Add additional information to the lower triangle of the matrix
+    
+    for (i in seq_along(colnames(pivot))){
+      for (j in seq_along(colnames(pivot))){
+        if (i != j){
+          # Combine the correlation value with the additional information from the dat table
+          pivot[i, j] = paste0(pivot[i, j], str_replace_all(
+            sgn %>% filter(X == colnames(pivot)[i], Y == colnames(pivot)[j]) %>% pull(all_of(pars)),
+            #c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')
+            c("^-?\\d+\\.?\\d*" = ''
+              )))
+        }
       }
     }
   }
   
-  # col and row names
-  all_nam = c('Intercept Mental Health',
-              'Intercept Public Health & Social Care',
-              'Intercept Healthcare',
-              'Intercept Education',
-              'Intercept Environment',
-              'Intercept Law and Order',
-              'Intercept Infrastructure',
-              'Slope Mental Health',
-              'Slope Public Health & Social Care',
-              'Slope Healthcare',
-              'Slope Education',
-              'Slope Environment',
-              'Slope Law and Order',
-              'Slope Infrastructure'
-  )
-  dimnames(pivot) = list(all_nam, all_nam)
-  
-  # Return the correlation table
   return(pivot)
 }
 
+# Clean Tables
 
+CiSplit = function(dat, rownm = F){
+  
+  # Create a function to extract values outside and inside the brackets
+  split_brackets = function(x) {
+    if (grepl("\\[", x)) {
+      outside <- gsub(" *\\[.*", "", x)
+      inside <- gsub(".*\\[(.*?)\\].*", "[\\1]", x)
+      return(list(outside = outside, inside = inside))
+    } else {
+      return(list(outside = x, inside = NA))
+    }
+  }
+  
+  if (rownm == T){
+    dat = rownames_to_column(dat, var = "id")
+  }
+  
+  dat_ = dat
+  names(dat_) = c('id', paste0('col', 1:(ncol(dat_)-1)))
+  nested_df = dat_ %>%
+    mutate(across(-1, ~lapply(., split_brackets), .names = "{col}_"))
+  
+  # Unnest the nested dataframe
+  df_split = unnest_wider(nested_df, col = starts_with("col"), names_sep = "_")
+  
+  # Convert the wide format to a long format
+  df_split = df_split %>% 
+    pivot_longer(
+      cols = -starts_with('id'),
+      names_to = c(".value", "type"),
+      names_pattern = "(.*)_([^_]+)$",
+      values_drop_na = F
+    )
+  
+  # Display the resulting data frame
+  df_split %<>% filter(!type == 1) %>% select(id, ends_with("_")) %>%
+    mutate(id = ifelse(id == lag(id) & !row_number() == 1, "", id))
+  
+  colnames(df_split) = colnames(dat)
+  colnames(df_split)[1] = '' # id col
+  
+  df_split[is.na(df_split)] = ''
+  df_split = df_split[rowSums(df_split == "") != ncol(df_split), ]
+  
+  return(df_split)
+}
 
 # Compute descriptive statistics
 
-summarize_data <- function(dat = df_before_scaling,
+summarize_data = function(dat = df_before_scaling,
                            .stationary = stationary,
                            .nonstationary = nonstationary,
                            year = 'year',
                            stat = list('Mean' = mean,
                                        'SD' = sd),
-                           rownames = nm_out[-1]) {
+                           rownames = nm_out) {
+  require(dplyr)
   
-  vars_used <- c(.nonstationary, .stationary)
+  vars_used = c(.nonstationary, .stationary)
   stat_names = names(stat)
+  
+  dat = dat %>%
+    ungroup()
   
   # summary for non stationary
   sumstat <- dat %>%
