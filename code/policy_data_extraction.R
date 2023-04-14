@@ -10,8 +10,10 @@ library(zoo)
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.r')
 
 # data loading
-POLICYDATA_LIST = loadLists(site = sites[7:length(sites)], year_seq = 2013:2020,
-                       list_number = 3, type = 'RSX')
+POLICYDATA_LIST = loadLists(site = sites[7:length(sites)],
+                            year_seq = 2013:2020,
+                            list_number = 3,
+                            type = 'RSX')
 
 # cleaning the range of data in excel worksheets 
 POLICYDATA_RAW = POLICYDATA_LIST
@@ -195,7 +197,7 @@ length(POLICYDATA[POLICYDATA$LAD == 'n/a'& !is.na(POLICYDATA$LAD),'LAD']) == 0
 
 # replace '...'
 POLICYDATA <- POLICYDATA %>% 
-  mutate_all(~ifelse(. == "…", NA, .))  %>%
+  mutate_all(~ifelse(. %in% c("…", '...'), NA, .))  %>%
   mutate_at(vars(general_policies), as.numeric)
 POLICYDATA %<>% rename(LAD19CD = LAD)
 
@@ -417,9 +419,9 @@ policydata[policydata$UTLACD %in% 'E10000002', 'PFA20CD'] = "E23000029"
 # find percentage for each lower tier la
 table(policydata[is.na(policydata$UTLACD), 'class']) # should be 'O  SC'
 
-general_policies_2 <- rep(general_policies, each = 2)
-suffix <- rep(c("_1", "_2"), length(general_policies))
-paste0(general_policies_2, suffix)
+# general_policies_2 <- rep(general_policies, each = 2)
+# suffix <- rep(c("_1", "_2"), length(general_policies))
+# paste0(general_policies_2, suffix)
 
 vars_sum = names(policydata)[grep('transport|cultural|environment|planning|central|other', names(policydata))]
 vars_mean = names(policydata)[grep('education|social_care_children|social_care_adult|housing|public_health|police|fire', names(policydata))]
@@ -457,7 +459,7 @@ ut_other = policydata %>% ungroup() %>%
 spends = policydata %>% ungroup() %>%
   filter(!class %in% c('O', 'SC'))
 
-join_cols <- c('CAUTH19CD', 'NPARK22CD', 'FRA19CD', 'PFA20CD', 'waste', 'UTLACD')
+join_cols = c('CAUTH19CD', 'NPARK22CD', 'FRA19CD', 'PFA20CD', 'waste', 'UTLACD')
 suffixes = c('_cmb', '_prk', '_fr', '_plc', '_wst', '_ut')
 
 # Perform the joins in a loop
@@ -487,7 +489,7 @@ policy_cols = colnames(spends %>% select(general_policies))
 
 for (i in policy_cols){
   spends = spends %>%
-  mutate(!!rlang::sym(i) := (rowSums(select(., starts_with(i)), na.rm = TRUE)/pop)*1000)
+  mutate(!!rlang::sym(i) := (rowSums(select(., starts_with(i)), na.rm = TRUE)/pop))
 }
 
 policy_df = spends %>% select(code:UTLACD)
@@ -517,28 +519,8 @@ policy_df %<>% filter(!LAD19CD %in% c('E06000059',
                                        'E06000028'
                                        ))
 
-spending_data = policy_df %>% select(year,
-                                     class,
-                              LAD21CD = LAD19CD,
-                              name = la,
-                              pop,
-                              general_policies,
-                              social_care_total,
-                              social_care_net)
-
-# compute incomes
-general_policies_ = general_policies_[1:(length(general_policies_)-1)] # remove total
-
-for (nm in general_policies_) {
-  cols = grep(paste0("^", nm), names(spending_data), value=TRUE)
-  spending_data[paste0(nm, "_inc")] = spending_data[,cols[1]] - spending_data[,cols[2]]
-}
-
-# n = df_fin %>% group_by(LAD19CD) %>% summarise(n = n())
-write.csv(spending_data, 'C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')
-
-
 # ----------------------------------------------------------------------
+
 # testing the difference with 2018 data by Alexiou and Barr
 
 upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data/Spending',
@@ -597,16 +579,17 @@ upload_la_finance = function(wd = 'C:/Users/ru21406/YandexDisk/PhD Research/Data
   return(spend_data)
 }
 
-spending_data_gross_my = spending_data %>% 
+spending_data_gross_my = policy_df %>% 
   select(!ends_with('_net') & !ends_with('_inc'))
+names(spending_data_gross_my) = gsub("_total", "", names(spending_data_gross_my))
 spend_data_gross  = upload_la_finance(type = 'gross')
 # spend_data_net  = upload_la_finance(type = 'net', 
-#                                     starts_from = 1,
-#                                     ends_with = 14)
+#                                      starts_from = 1,
+#                                      ends_with = 14)
 
 
 test = spend_data_gross %>%
-  left_join(spending_data_gross_my, by = c('year', 'LAD21CD')) %>%
+  left_join(spending_data_gross_my, by = c('year', 'LAD21CD'='LAD19CD')) %>%
   filter(!is.na(education.y)) # remove 2019
 
 policy_cols_new = colnames(spending_data_gross_my %>% select(education:other, social_care))
@@ -619,5 +602,32 @@ for (i in seq_along(colnames_1)) {
   colname_2 <- colnames_2[i]
   test[[paste0('res_', i)]] <- round(test[[colname_1]] - test[[colname_2]], 3)
 }
+
+test %<>% filter(is.na(NPARK22CD) & !LAD21CD == 'E06000053') 
 # summary(test %>% select(starts_with('res_'))) # minor differences mainly due to park LAs
+
+# ----------------------------------------------------------------------
+
+all_policies = c(general_policies,
+                 'social_care_total',
+                 'social_care_net')
+spending_data = policy_df %>% select(year,
+                                     class,
+                                     LAD21CD = LAD19CD,
+                                     name = la,
+                                     pop,
+                                     all_of(all_policies)) %>%
+  mutate(across(all_of(all_policies), ~ . * 1000))
+
+# compute incomes
+general_policies_ = c('social_care', general_policies_[1:(length(general_policies_)-1)]) # remove total
+
+for (nm in general_policies_) {
+  cols = grep(paste0("^", nm), names(spending_data), value=TRUE)
+  spending_data[paste0(nm, "_inc")] = spending_data[,cols[1]] - spending_data[,cols[2]]
+}
+
+# n = df_fin %>% group_by(LAD19CD) %>% summarise(n = n())
+write.csv(spending_data, 'C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')
+
 

@@ -174,6 +174,7 @@ fm_rcgclm_fit_h = fitmeasures(rcgclm_fit_h, measures)
 # ---------------------------------------------------------------------
 # ------------------------------- Robustness --------------------------
 # ---------------------------------------------------------------------
+
 # 1. Without London
 rcgclm_syntax_L = RC_GCLM_syntax(model = 'regclm',
                                  control = control_names[!control_names %in% 'London'])
@@ -239,9 +240,9 @@ beepr::beep()
 #summary(rcgclm_outliers_1.5_fit, standardized=T)
 fm_rcgclm_outliers_1.5_fit = fitmeasures(rcgclm_outliers_1.5_fit, measures)
 
-# ----------------------------------------------------------------------
-
-# Indices
+# ---------------------------------------------------------------------
+# -------------------------------- Indices-- --------------------------
+# ---------------------------------------------------------------------
 
 mental_sub_syntax = RC_GCLM_syntax(model = 'regclm')
 
@@ -283,7 +284,6 @@ mental_sub3_fit = sem(mental_sub_syntax,
 )
 fm_mental_sub3_fit = fitmeasures(mental_sub3_fit, measures)
 #summary(mental_sub3_fit, standardized=T)
-#hist(df$antidep_rate)
 
 # 4. Hospital admissions (z-scores)
 
@@ -300,12 +300,11 @@ beepr::beep()
 fm_mental_sub4_fit = fitmeasures(mental_sub4_fit, measures)
 
 # # ----------------------------------------------------------------------
+# # ----------------------------- Output ---------------------------------
 # # ----------------------------------------------------------------------
-# # ----------------------------------------------------------------------
-
-# Output
 
 # 1. Sample description
+
 stationary = control_names
 nonstationary = c('samhi_index',
                   'prop_ibesa',
