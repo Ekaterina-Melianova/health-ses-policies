@@ -48,6 +48,19 @@ measures = c('npar',
              'aic',
              'bic',
              'logl')
+# measures = c('npar',
+#              'chisq.robust',
+#              'df.robust',
+#              'cfi.robust',
+#              'tli.robust',
+#              'srmr',
+#              'rmsea.robust',
+#              'rmsea.ci.lower.robust',
+#              'rmsea.ci.upper.robust',
+#              'agfi',
+#              'aic',
+#              'bic',
+#              'logl')
 
 nm_out = c('Mental Health Index',
            'Incapacity Benefits Rate',
@@ -852,11 +865,11 @@ CoefsExtract = function(models = NULL,
 
     } else{
       # main effects - unstandardized
-      stdsol_main = broom::tidy(eval(parse(text = model))) %>% 
+      stdsol = broom::tidy(eval(parse(text = models[1]))) %>% 
         separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
         rename(est.std = std.all, se = std.error, pvalue = p.value)
       
-      stdsol_main = stdsol_main %>%
+      stdsol_main = stdsol %>%
         select(-est.std) %>%
         rename(est.std = estimate) %>%
         filter(
@@ -1219,6 +1232,7 @@ summarize_data = function(dat = df_before_scaling,
     }
   }
   sumstat = sumstat[,c('variable', names((sort(unlist(sapply(colnames, get_number))))))]
+  sumstat[,-1] = lapply(sumstat[,-1], sprintf, fmt = "%.1f")
   
   # summary for stationary
   overall <- dat %>%
@@ -1228,14 +1242,16 @@ summarize_data = function(dat = df_before_scaling,
     separate(key, into = c("variable", "stat"), sep = "__") %>%
     pivot_wider(id_cols = variable, names_from = stat, values_from = value)
   
+  overall[,-1] = lapply(overall[,-1], sprintf, fmt = "%.1f")
+  
   # combining
   sumstat_fin <- sumstat %>%
     full_join(overall, by = "variable") %>%
-    mutate(across(where(is.numeric), round, 2)) %>%
+    #mutate(across(where(is.numeric), round, 2)) %>%
     mutate_all(~ ifelse(is.na(.), "", .)) %>%
     select(-variable) %>%
     add_column(`Names` = rownames, .before = 1)
-  
+
   # adding names
   dat = as.data.frame(dat)
   colnames(sumstat_fin)[1] <- ""

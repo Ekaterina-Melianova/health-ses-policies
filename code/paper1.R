@@ -105,6 +105,18 @@ hist(df$public_health, breaks = 30)
 
 # Series of models
 
+# 1. Random Curve Only
+only_growth_syntax = RC_GCLM_syntax(model = 'regclm',
+                                    impulses = F,
+                                    past_states = F)
+only_growth_fit = sem(only_growth_syntax,
+                      data = df_lavaan_mental, 
+                      estimator = "mlr",
+                      orthogonal = T, 
+                      cluster = 'LAD21CD')
+fm_only_growth_fit = fitmeasures(only_growth_fit, measures)
+#summary(only_growth_fit, standardized=T)
+
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
                                no_slopes = no_slopes)
@@ -321,37 +333,46 @@ nonstationary = c('samhi_index',
 vars_used = c(nonstationary, stationary)
 
 sumstat_fin = summarize_data(dat = df_before_scaling, stat = list('Mean' = mean,
-                                                                  'SD' = sd,
-                                                                  'Min' = min,
-                                                                  'Max' = max))
+                                                                  'SD' = sd#,
+                                                                  #'Min' = min,
+                                                                  #'Max' = max
+                                                                  )
+                                                                  )
+
+
 # # ----------------------------------------------------------------------
 
 # 2. Correlations
 
-cor_tab = signif(cor(df_before_scaling[,vars_used]), 2)
+cor_tab = as.data.frame(cor(df_before_scaling[,vars_used]))
+cor_tab[] = lapply(cor_tab, sprintf, fmt = "%.2f")
 cor_tab[lower.tri(cor_tab, diag=F)] = ''
 cor_tab = as.data.frame(cor_tab)
 colnames(cor_tab) = 1:ncol(cor_tab)
 rownames(cor_tab) = nm_out
 
+
 # # ----------------------------------------------------------------------
 
 # 3. Random effects correlations - main model
 
-effects_all = CoefsExtract(models = c('riclpm_fit', 'rcgclm_fit', 'rcgclm_fit_h'),
-             growth = c(paste0('i', endogeneous), 
-                        paste0('s', endogeneous)))
+# effects_all = CoefsExtract(models = c('only_growth_fit',
+#                                       'riclpm_fit',
+#                                       'rcgclm_fit',
+#                                       'rcgclm_fit_h'),
+#              growth = c(paste0('i', endogeneous), 
+#                         paste0('s', endogeneous)))
 
 # keeping covariances only
 d_growth_cov = effects_all %>% filter(type == 'd_growth_cov') %>% 
   dplyr:: select(id, ends_with('long'))
-d_growth_cov = d_growth_cov[,c('id', 'est.std.y_long')]
+d_growth_cov = d_growth_cov[,c('id', 'est.std.x.x_long')]
 #d_growth_cov$est.std.y_long = gsub("\\[.*?\\]", '', d_growth_cov$est.std.y_long)
 
 # applying the function
 growthcortab_m3 = MatrixEffects(dat = d_growth_cov,
                                 cor_name = 'id',
-                                pars = 'est.std.y_long') 
+                                pars = 'est.std.x.x_long') 
 
 # col and row names
 all_nam = c('Intercept Mental Health',
@@ -402,9 +423,12 @@ section_names = c('Autoregressive Effects',
                   'Random Intercepts',
                   'Random Slopes',
                   'Fit Measures')
-fit_measures_seq = round(cbind.data.frame(est.std.x_long = fm_riclpm_fit,
-                                          est.std.y_long = fm_rcgclm_fit,
-                                          est.std_long = fm_rcgclm_fit_h), 3)
+fit_measures_seq = cbind.data.frame(est.std.x_long = fm_only_growth_fit,
+                                          est.std.y_long = fm_riclpm_fit,
+                                          est.std.x.x_long = fm_rcgclm_fit,
+                                          est.std.y.y_long = fm_rcgclm_fit_h)
+
+fit_measures_seq[] = lapply(fit_measures_seq, sprintf, fmt = "%.3f")
 
 # create tables with effects and fit measures
 
@@ -443,23 +467,24 @@ TableEffects = function(dat = effects_all,
 }
 
 seq_models_coefs = TableEffects(fit_measures = fit_measures_seq)
-seq_models_coefs[,3] = NULL # remove empty short-run for reclpm_fit
+seq_models_coefs[,c(3,5)] = NULL # remove empty short-run for only_growth_fit and reclpm_fit
 seq_models_coefs[10:15,1] = end_new[2:7]
 
 # # ----------------------------------------------------------------------
 
 # 4.2. Regression table - indices
 
-indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
-                                                'mental_sub2_fit',
-                                                'mental_sub3_fit',
-                                                'mental_sub4_fit'),
-                                     growth = c(paste0('i', endogeneous),
-                                                paste0('s', endogeneous)))
-fit_measures_indices = round(cbind.data.frame(est.std.x_long = fm_mental_sub1_fit,
-                                      est.std.y_long = fm_mental_sub2_fit,
-                                      est.std.x.x_long = fm_mental_sub3_fit,
-                                      est.std.y.y_long = fm_mental_sub4_fit),2)
+# indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
+#                                                 'mental_sub2_fit',
+#                                                 'mental_sub3_fit',
+#                                                 'mental_sub4_fit'),
+#                                      growth = c(paste0('i', endogeneous),
+#                                                 paste0('s', endogeneous)))
+fit_measures_indices = cbind.data.frame(est.std.x_long = fm_mental_sub1_fit,
+                                              est.std.y_long = fm_mental_sub2_fit,
+                                              est.std.x.x_long = fm_mental_sub3_fit,
+                                              est.std.y.y_long = fm_mental_sub4_fit)
+fit_measures_indices[] = lapply(fit_measures_indices, sprintf, fmt = "%.3f")
 
 indices_models_coefs = TableEffects(dat = indices_models_coefs_,
                                     fit_measures = fit_measures_indices)
@@ -470,14 +495,15 @@ indices_models_coefs[10:15,1] = end_new[2:7]
 
 # 4.3 Regression table - sensitivity
 
-sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_L_fit', 
-                                                    'rcgclm_outliers_3_fit',
-                                                    'rcgclm_outliers_1.5_fit'),
-                                     growth = c(paste0('i', endogeneous),
-                                                paste0('s', endogeneous)))
-fit_measures_sensitivity = round(cbind.data.frame(est.std.x_long = fm_rcgclm_L_fit,
+# sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_L_fit', 
+#                                                     'rcgclm_outliers_3_fit',
+#                                                     'rcgclm_outliers_1.5_fit'),
+#                                      growth = c(paste0('i', endogeneous),
+#                                                 paste0('s', endogeneous)))
+fit_measures_sensitivity = cbind.data.frame(est.std.x_long = fm_rcgclm_L_fit,
                                               est.std.y_long = fm_rcgclm_outliers_3_fit,
-                                              est.std_long = fm_rcgclm_outliers_1.5_fit),2)
+                                              est.std_long = fm_rcgclm_outliers_1.5_fit)
+fit_measures_sensitivity[] = lapply(fit_measures_sensitivity, sprintf, fmt = "%.3f")
 
 sensitivity_models_coefs = TableEffects(dat = sensitivity_models_coefs_,
                                     fit_measures = fit_measures_sensitivity)
@@ -491,23 +517,23 @@ sensitivity_models_coefs[10:15,1] = end_new[2:7]
 f_other_policies = effects_all %>% filter(type %in% c('f_other_policies',
                                                       'a_auto') &
                                             !grepl('HE', id))
-f_other_policies_long = f_other_policies[,c('id', 'est.std.y_long')]
-f_other_policies_short = f_other_policies[,c('id', 'est.std.y_short')]
-#f_other_policies$est.std.y_long = gsub("\\[.*?\\]", '', f_other_policies$est.std.y_long)
+f_other_policies_long = f_other_policies[,c('id', 'est.std.x.x_long')]
+f_other_policies_short = f_other_policies[,c('id', 'est.std.x.x_long')]
+#f_other_policies$est.std.x.x_long = gsub("\\[.*?\\]", '', f_other_policies$est.std.x.x_long)
 
 # applying the function
 other_policies_matrix_long = MatrixEffects(dat = f_other_policies_long,
                                 cor_name = 'id',
                                 colnames = endogeneous[-1],
                                 rownames = endogeneous[-1],
-                                pars = 'est.std.y_long',
+                                pars = 'est.std.x.x_long',
                                 cor = F,
                                 sep = '~') 
 other_policies_matrix_short = MatrixEffects(dat = f_other_policies_short,
                                            cor_name = 'id',
                                            colnames = endogeneous[-1],
                                            rownames = endogeneous[-1],
-                                           pars = 'est.std.y_short',
+                                           pars = 'est.std.x.x_long',
                                            cor = F,
                                            sep = '~') 
 dimnames(other_policies_matrix_long) = list(nm_out[6:11], nm_out[6:11])
@@ -518,14 +544,14 @@ dimnames(other_policies_matrix_short) = list(nm_out[6:11], nm_out[6:11])
 # 6. Main model - controls
 
 g_controls = effects_all %>% filter(type == 'g_controls')
-g_controls = g_controls[,c('id', 'est.std.y_long')]
-#g_controls$est.std.y_long = gsub("\\[.*?\\]", '', g_controls$est.std.y_long)
+g_controls = g_controls[,c('id', 'est.std.x.x_long')]
+#g_controls$est.std.x.x_long = gsub("\\[.*?\\]", '', g_controls$est.std.x.x_long)
 
 # applying the function
 controls_matrix = MatrixEffects(dat = g_controls,
                                 cor_name = 'id',
                                 rownames = gsub('[[:digit:]]+', '', control_names),
-                                pars = 'est.std.y_long',
+                                pars = 'est.std.x.x_long',
                                 cor = F,
                                 sep = '~') 
 dimnames(controls_matrix) = list(nm_out[12:22], rep(nm_out[c(1,6:11)],2))
@@ -569,10 +595,12 @@ pct_coef$id = c('Adult Social Care',
 # 8. Final Tables
 
 col_seq = c('', 
-            'Model 1.1',
+            'Model 1.1', 
             'Model 1.2',
+            'Model 1.3',
             '',
-            'Model 1.3')
+            'Model 1.4',
+            '')
 
 col_ind = c('',
             'Model 2.1', '',
@@ -612,22 +640,25 @@ SubHead = function(tab, which_null = NULL, n, colnames){
 sumstat_fin
 
 seq_models_coefs = SubHead(CiSplit(seq_models_coefs),
-                           which_null = 3,
-                           n = 3,
+                           which_null = c(3,5),
+                           n = 4,
                            colnames = col_seq)
 indices_models_coefs = SubHead(CiSplit(indices_models_coefs),
                                n = 4,
                                colnames = col_ind)
 
+
 pct_coef = SubHead(CiSplit(pct_coef),
                    n = 5,
                    colnames = col_pct)
 
-# Appendicies
+# Appendices
 
 cor_tab
 growthcortab_m3 = CiSplit(growthcortab_m3, rownm = T)
-sensitivity_models_coefs = CiSplit(sensitivity_models_coefs)
+sensitivity_models_coefs = SubHead(CiSplit(sensitivity_models_coefs),
+                                   n = 3,
+                                   colnames = col_sens)
 
 controls_inter_mat = CiSplit(controls_inter_mat, rownm = T)
 controls_slope_mat = CiSplit(controls_slope_mat, rownm = T)
@@ -640,6 +671,63 @@ other_policies_matrix = rbind.data.frame(Long,
                                          other_policies_matrix_long,
                                          Short,
                                          other_policies_matrix_short)
+
+# writing to word
+library(flextable)
+library(officer)
+
+# Create a list of data frames
+df_list <- list(
+  sumstat_fin,
+  seq_models_coefs,
+  indices_models_coefs,
+  pct_coef,
+  
+   cor_tab,
+   growthcortab_m3,
+   sensitivity_models_coefs,
+   controls_inter_mat,
+   controls_slope_mat,
+   other_policies_matrix_long,
+   other_policies_matrix_short,
+   other_policies_matrix
+)
+
+replace_empty_colnames <- function(df) {
+  colnames <- names(df)
+  empty_cols <- colnames[colnames == ""]
+  if (length(empty_cols) > 0) {
+    colnames[colnames == ""] <- "RRR"
+    colnames(df) <- colnames
+  }
+  return(df)
+}
+df_list <- lapply(df_list, replace_empty_colnames)
+
+
+df_list = lapply(df_list, as.data.frame)
+
+# Create a Word document
+doc <- read_docx()
+
+# Loop over the list of data frames and add them to the document
+for (i in seq_along(df_list)) {
+  doc <- doc %>% 
+    body_add_table(df_list[[i]])
+  
+  # Add a page break after each table
+  if (i < length(df_list)) {
+    doc <- doc %>% 
+      body_add_break()
+  }
+}
+
+# Save the document
+
+print(doc, target = "C:/Users/ru21406/YandexDisk/PhD Research/Literature review/Paper1_tabs.docx")
+
+
+
 
 # # ----------------------------------------------------------------------
 
