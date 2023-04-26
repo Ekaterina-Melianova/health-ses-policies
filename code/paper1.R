@@ -332,12 +332,14 @@ nonstationary = c('samhi_index',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-sumstat_fin = summarize_data(dat = df_before_scaling, stat = list('Mean' = mean,
-                                                                  'SD' = sd#,
-                                                                  #'Min' = min,
-                                                                  #'Max' = max
-                                                                  )
-                                                                  )
+sumstat_fin = summarize_data(dat = df_before_scaling,
+                                         quant = F,
+                             stat = list('Mean' = mean,
+                                         'SD' = sd#,
+                                         #'Q25' = function(x) quantile(x, 0.25),
+                                         #'Q75' = function(x) quantile(x, 0.75)
+                                         )
+                             )
 
 
 # # ----------------------------------------------------------------------
@@ -351,6 +353,13 @@ cor_tab = as.data.frame(cor_tab)
 colnames(cor_tab) = 1:ncol(cor_tab)
 rownames(cor_tab) = nm_out
 
+row_column_numering = function(dat){
+  dat %<>% rownames_to_column(var = ' ')
+  dat = cbind.data.frame(1:nrow(dat), dat)
+  colnames(dat) = c('','', 1:(ncol(dat)-2))
+  return(dat)
+}
+cor_tab = row_column_numering(cor_tab)
 
 # # ----------------------------------------------------------------------
 
@@ -370,7 +379,7 @@ d_growth_cov = d_growth_cov[,c('id', 'est.std.x.x_long')]
 #d_growth_cov$est.std.y_long = gsub("\\[.*?\\]", '', d_growth_cov$est.std.y_long)
 
 # applying the function
-growthcortab_m3 = MatrixEffects(dat = d_growth_cov,
+growthcor = MatrixEffects(dat = d_growth_cov,
                                 cor_name = 'id',
                                 pars = 'est.std.x.x_long') 
 
@@ -390,7 +399,17 @@ all_nam = c('Intercept Mental Health',
             'Slope Law and Order',
             'Slope Infrastructure'
 )
-dimnames(growthcortab_m3) = list(all_nam, 1:length(all_nam))
+dimnames(growthcor) = list(all_nam, 1:length(all_nam))
+
+# split into 3 tables
+
+int_int = growthcor[1:7,1:7]
+int_slope = growthcor[1:7,8:14]
+slope_slope = growthcor[8:14,8:14]
+
+int_int = row_column_numering(int_int)
+int_slope = row_column_numering(int_slope)
+slope_slope = row_column_numering(slope_slope)
 
 # # ----------------------------------------------------------------------
 
@@ -422,7 +441,7 @@ section_names = c('Autoregressive Effects',
                   'Cross-Lagged Effects of Spending on Mental Health',
                   'Random Intercepts',
                   'Random Slopes',
-                  'Fit Measures')
+                  'Fit Measures (Scaled)')
 fit_measures_seq = cbind.data.frame(est.std.x_long = fm_only_growth_fit,
                                           est.std.y_long = fm_riclpm_fit,
                                           est.std.x.x_long = fm_rcgclm_fit,
@@ -518,7 +537,7 @@ f_other_policies = effects_all %>% filter(type %in% c('f_other_policies',
                                                       'a_auto') &
                                             !grepl('HE', id))
 f_other_policies_long = f_other_policies[,c('id', 'est.std.x.x_long')]
-f_other_policies_short = f_other_policies[,c('id', 'est.std.x.x_long')]
+f_other_policies_short = f_other_policies[,c('id', 'est.std.x.x_short')]
 #f_other_policies$est.std.x.x_long = gsub("\\[.*?\\]", '', f_other_policies$est.std.x.x_long)
 
 # applying the function
@@ -533,7 +552,7 @@ other_policies_matrix_short = MatrixEffects(dat = f_other_policies_short,
                                            cor_name = 'id',
                                            colnames = endogeneous[-1],
                                            rownames = endogeneous[-1],
-                                           pars = 'est.std.x.x_long',
+                                           pars = 'est.std.x.x_short',
                                            cor = F,
                                            sep = '~') 
 dimnames(other_policies_matrix_long) = list(nm_out[6:11], nm_out[6:11])
@@ -654,8 +673,9 @@ pct_coef = SubHead(CiSplit(pct_coef),
 
 # Appendices
 
-cor_tab
-growthcortab_m3 = CiSplit(growthcortab_m3, rownm = T)
+int_int = CiSplit(int_int, rownm = F)
+int_slope = CiSplit(int_slope, rownm = F)
+slope_slope = CiSplit(slope_slope, rownm = F)
 sensitivity_models_coefs = SubHead(CiSplit(sensitivity_models_coefs),
                                    n = 3,
                                    colnames = col_sens)
@@ -671,26 +691,31 @@ other_policies_matrix = rbind.data.frame(Long,
                                          other_policies_matrix_long,
                                          Short,
                                          other_policies_matrix_short)
+cor_tab
 
 # writing to word
-library(flextable)
 library(officer)
 
 # Create a list of data frames
 df_list <- list(
+  
+  # main
+  
   sumstat_fin,
   seq_models_coefs,
   indices_models_coefs,
   pct_coef,
   
-   cor_tab,
-   growthcortab_m3,
-   sensitivity_models_coefs,
-   controls_inter_mat,
-   controls_slope_mat,
-   other_policies_matrix_long,
-   other_policies_matrix_short,
-   other_policies_matrix
+  # Appendices
+  
+  int_int,
+  int_slope,
+  slope_slope,
+  sensitivity_models_coefs,
+  controls_inter_mat,
+  controls_slope_mat,
+  other_policies_matrix,
+  cor_tab
 )
 
 replace_empty_colnames <- function(df) {
