@@ -62,29 +62,29 @@ measures = c('npar',
 #              'bic',
 #              'logl')
 
-nm_out = c('Mental Health Index',
-           'Incapacity Benefits Rate',
-           'Depression Rate',
-           'Antidepressants Rate',
-           'Hospital Attendances Score',
+nm_out = c('SAMHI z-score',
+           'Incapacity Benefits rate',
+           'Depression rate',
+           'Antidepressants rate',
+           'Hospital Admission z-score',
            
            'Adult Social Care',
            'Children Social Care',
            'Healthcare',
            'Environment',
-           'Law and Order',
+           'Law & Order',
            'Infrastructure',
            
-           'Public Health 7-year Average, £ per capita',
-           'LAD Income 7-year Average, £ per capita',
-           'IMD (inc., educ., empl. domains)',
-           'LSOA population size',
-           'Non-white, LSOA prop.',
-           'Females, LSOA prop.',
-           'Older, LSOA prop.',
-           'Number of LSOAs in a LAD',
-           'Rural, prop. of rural LSOAs',
-           'London',
+           'Public Health, 7-year mean',
+           'LTLA Income, 7-year mean',
+           'IMD (inc. and empl. domains)',
+           'LSOA Population Size',
+           'Non-white, LSOA %',
+           'Females, LSOA %',
+           'Older, LSOA %',
+           'N of LSOAs in LTLA',
+           'Rural, LSOA %',
+           'London Boroughs',
            'Shire Districts')
 
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
@@ -1251,9 +1251,25 @@ summarize_data = function(dat = df_before_scaling,
     mutate_all(~ ifelse(is.na(.), "", .)) %>%
     select(-variable) %>%
     add_column(`Names` = rownames, .before = 1)
-
+  
+  # if IQR == T
+  colnames(sumstat_fin) = sub('_', '', colnames(sumstat_fin))
+  suffixes = unique(sub("^Q\\d{2}", "", grep("^Q25", colnames(sumstat_fin), value = T)))
+  
+  # Collapse each pair of columns
+  for (i in seq_along(suffixes)) {
+    q25_col <- paste0("Q25", suffixes[i])
+    q75_col <- paste0("Q75", suffixes[i])
+    sumstat_fin = sumstat_fin %>% 
+      mutate(!!q25_col := paste(!!sym(q25_col), !!sym(q75_col), sep = "-")) %>%
+      select(-!!q75_col) %>% rename(!!!setNames(q25_col, paste0('IQR',suffixes[i])))
+  }
+  
+  stat_names = c(stat_names[!stat_names %in% c("Q25", "Q75")], 'IQR')
+  sumstat_fin %<>%
+    mutate_all(~ ifelse(. == '-', "", .))
+  
   # adding names
-  dat = as.data.frame(dat)
   colnames(sumstat_fin)[1] <- ""
   year_vec = as.vector(unique(dat[,year]))
   blank_rep = rep('', (length(stat_names)-1))
