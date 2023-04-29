@@ -79,6 +79,7 @@ summary(df)
 setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data')
 dep15 = read.csv('imd2015lsoa.csv')
 table(dep15$Indices.of.Deprivation)
+# length(unique(dep15$FeatureCode)) n LSOAs in 2019
 dep15 %<>% filter(Indices.of.Deprivation %in% c('b. Income Deprivation Domain', 
                                                 'c. Employment Deprivation Domain',
                                                 'd. Education, Skills and Training Domain',
@@ -182,13 +183,13 @@ controls_census = list(census1, census2, census3, census4) %>%
   reduce(dplyr::left_join, by = 'lsoa11')
 df %<>% left_join(controls_census, by = 'lsoa11')
 
-# number of lsoas within each lad
-df %<>% group_by(LAD21CD) %>% dplyr::mutate(n = n())
-
 # filtering City of London and Isles of Scilly
 df %<>% filter(!LAD21CD %in% c('E09000001',
                                'E06000053')) %>%
   ungroup()
+
+# number of lsoas within each lad
+df %<>% group_by(year, LAD21CD) %>% dplyr::mutate(n = n())
 
 # time variable
 df = as.data.frame(df)
@@ -211,6 +212,11 @@ df = cbind.data.frame(df, 'inc' = rowMeans(df[, grep("inc$", names(df))]))
 df %<>% group_by(LAD21CD) %>%
   mutate(inc_mean = mean(inc))
 summary(df)
+
+# class
+df$London = ifelse(df$class == 'L', 1, 0)
+df$MD = ifelse(df$class == 'MD', 1, 0)
+df$SD = ifelse(df$class == 'SD', 1, 0)
 
 #df = df %>% filter(housing_transport > 0 & environment_planning_cultural > 0 & pub_health_soc_care > 0)
 

@@ -24,7 +24,8 @@ control_names = c('public_health_mean',
                   
                   'rural',
                   'London',
-                  'SD')
+                  'SD',
+                  'MD')
 health_vars = c('samhi_index',
                 'z_mh_rate',
                 'antidep_rate',
@@ -62,30 +63,57 @@ measures = c('npar',
 #              'bic',
 #              'logl')
 
-nm_out = c('SAMHI z-score',
-           'Incapacity Benefits rate',
-           'Depression rate',
-           'Antidepressants rate',
-           'Hospital Admission z-score',
+descriptives_names = c('SAMHI Z-Score',
+                       'Incapacity Benefits LSOA %',
+                       'Depression LSOA %',
+                       'Antidepressants per head',
+                       'Hospital Admission Z-Score',
+                       
+                       'Adult Social Care',
+                       'Children Social Care',
+                       'Healthcare',
+                       'Environment',
+                       'Law and Order',
+                       'Infrastructure',
+                       
+                       'Public Health, 7-year mean',
+                       'LTLA Income, 7-year mean',
+                       'IMD (inc. + empl. domains)',
+                       'LSOA Population Size',
+                       'Non-white, LSOA %',
+                       'Females, LSOA %',
+                       'Older, LSOA %',
+                       'N of LSOAs in LTLA',
+                       'Rural, LSOA %',
+                       'London Boroughs',
+                       'Shire Districts',
+                       'Metropolitan Districts')
+
+nm_out = c('SAMHI',
+           'Incapacity Benefits',
+           'Depression',
+           'Antidepressants',
+           'Hospital Admission',
            
            'Adult Social Care',
            'Children Social Care',
            'Healthcare',
            'Environment',
-           'Law & Order',
+           'Law and Order',
            'Infrastructure',
            
-           'Public Health, 7-year mean',
-           'LTLA Income, 7-year mean',
-           'IMD (inc. and empl. domains)',
+           'Public Health',
+           'LTLA Income',
+           'IMD (inc. + empl.)',
            'LSOA Population Size',
-           'Non-white, LSOA %',
-           'Females, LSOA %',
-           'Older, LSOA %',
+           'Non-white',
+           'Females',
+           'Older',
            'N of LSOAs in LTLA',
-           'Rural, LSOA %',
+           'Rural',
            'London Boroughs',
-           'Shire Districts')
+           'Shire Districts',
+           'Metropolitan Districts')
 
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
               'sen ', 'slo ', 'sfr ',
@@ -856,7 +884,8 @@ CoefsExtract = function(models = NULL,
           op == "~" & rhs %in% end |
           op == "~1" & lhs %in% growth |
           op == "~" & rhs %in% impulses |
-          op == "~" & rhs %in% controls
+          op == "~" & rhs %in% controls #|
+          #op == "~~" & rhs %in% impulses & lhs %in% impulses & !rhs==lhs
          ) %>% 
         dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>% 
         mutate(id = str_c(lhs, op, rhs)) %>%
@@ -865,7 +894,7 @@ CoefsExtract = function(models = NULL,
 
     } else{
       # main effects - unstandardized
-      stdsol = broom::tidy(eval(parse(text = models[1]))) %>% 
+      stdsol = broom::tidy(eval(parse(text = model))) %>% 
         separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
         rename(est.std = std.all, se = std.error, pvalue = p.value)
       
@@ -883,7 +912,7 @@ CoefsExtract = function(models = NULL,
         select(-one_of(tech))
     }
     
-    # covariance - unstandardized always
+    # covariance - unstandardized always (to make correlations)
     stdsol_cov = broom::tidy(eval(parse(text = model))) %>% 
       separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
       rename(est.std = std.all, se = std.error, pvalue = p.value)
@@ -892,9 +921,10 @@ CoefsExtract = function(models = NULL,
       select(-est.std) %>%
       rename(est.std = estimate) %>%
       filter(
-          op == "~~" & lhs %in% growth & rhs %in% growth
+          op == "~~" & lhs %in% growth & rhs %in% growth|
+          op == "~~" & rhs %in% impulses & lhs %in% impulses #& !rhs==lhs
       ) %>%
-      dplyr::select(all_of(intersect(colnames(stdsol), colnm))) %>%
+      dplyr::select(all_of(intersect(colnames(stdsol_cov), colnm))) %>%
       mutate(id = str_c(lhs, op, rhs)) %>%
       select(-one_of(tech))
     
@@ -902,11 +932,12 @@ CoefsExtract = function(models = NULL,
     
     # if reclpm_fit, remove 'e_' for the main effects
     stdsol_fin$id <- sapply(stdsol_fin$id, function(s) {
-      if (length(gregexpr("e_", s)[[1]]) >= 2) {
+      if (length(gregexpr("e_", s)[[1]]) >= 2 & !grepl('~~', s)) {
         s <- gsub("e_", "", s)
       }
       return(s)
-    })
+    }
+    )
     
     return(stdsol_fin)
     
@@ -944,6 +975,10 @@ CoefsExtract = function(models = NULL,
   # determining types of effects for further arrangement
   coefs_long = as.data.table(coefs_long)
   
+  impulse_variants <- data.frame(t(combn(c(impulses_, impulses_), 2)))%>% 
+    dplyr::mutate(collapse = glue('{X1}~~{X2}')) %>% 
+    pull(collapse)
+  
   if (!is.null(growth)) {
     growth_variants <- expand.grid(growth, growth) %>% 
       dplyr::mutate(collapse = glue('{Var1}~~{Var2}')) %>% 
@@ -952,28 +987,30 @@ CoefsExtract = function(models = NULL,
     coefs_long[, type := case_when(
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
-      id %in% growth_variants ~ 'd_growth_cov',
-      grepl('~#', id) ~ 'e_growth_means',
+      id %in% growth_variants ~ 'e_growth_cov',
+      id %in% impulse_variants ~ 'd_impulse_cov',
+      grepl('~#', id) ~ 'f_growth_means',
       substr(id, 6, 7) == substr(health, 1, 2) ~ 'b_health',
       substr(id, 4, 5) == substr(health, 1, 2) ~ 'b_health',
-      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'g_controls',
-      TRUE ~ 'f_other_policies'
+      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'h_controls',
+      TRUE ~ 'g_other_policies'
     )]
   } else {
     coefs_long[, type := case_when(
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
+      id %in% impulse_variants ~ 'd_impulse_cov',
       substr(id, 6, 7) == substr(health, 1, 2) ~ 'b_health',
       substr(id, 4, 5) == substr(health, 1, 2) ~ 'b_health',
-      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'g_controls',
-      TRUE ~ 'f_other_policies'
+      substr(id, 4, nchar(id)) %in% gsub('[[:digit:]]+', '', paste0('~', controls)) ~ 'h_controls',
+      TRUE ~ 'g_other_policies'
     )]
   }
 
   coefs_long <- coefs_long %>%
     arrange(type) %>%
     mutate(
-      long_or_short = ifelse(grepl('e_', id), 'short', 'long'),
+      long_or_short = ifelse(grepl('e_', id) & !grepl('~~', id), 'short', 'long'),
       num = case_when(
         grepl('as', substr(id, 1, 2)) ~ 2,
         grepl('cs', substr(id, 1, 2)) ~ 3,
@@ -1201,12 +1238,14 @@ CiSplit = function(dat, rownm = F){
 # Compute descriptive statistics
 
 summarize_data = function(dat = df_before_scaling,
-                           .stationary = stationary,
-                           .nonstationary = nonstationary,
-                           year = 'year',
-                           stat = list('Mean' = mean,
+                          .stationary = stationary,
+                          .nonstationary = nonstationary,
+                          year = 'year',
+                          id = 'LAD21CD',
+                          stat = list('Mean' = mean,
                                        'SD' = sd),
-                           rownames = nm_out) {
+                          rownames = nm_out,
+                          quant = T) {
   require(dplyr)
   
   vars_used = c(.nonstationary, .stationary)
@@ -1217,7 +1256,7 @@ summarize_data = function(dat = df_before_scaling,
   
   # summary for non stationary
   sumstat <- dat %>%
-    select(all_of(.nonstationary), year) %>%
+    dplyr::select(all_of(.nonstationary), year) %>%
     group_by(year) %>%
     summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
     pivot_longer(-year, names_to = c("variable", "stat"), names_sep = "__") %>%
@@ -1232,26 +1271,34 @@ summarize_data = function(dat = df_before_scaling,
     }
   }
   sumstat = sumstat[,c('variable', names((sort(unlist(sapply(colnames, get_number))))))]
-  sumstat[,-1] = lapply(sumstat[,-1], sprintf, fmt = "%.1f")
+  sumstat[,-1] = lapply(sumstat[,-1], sprintf, fmt = "%.2f")
   
   # summary for stationary
-  overall <- dat %>%
-    select(all_of(vars_used)) %>%
-    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
+  
+  # adjusting for the LAD-based vars - n
+  dat_st = dat
+  dat_st = dat_st %>%
+    group_by(!!sym(id)) %>%
+    mutate(n = ifelse(row_number() == 1, n, NA)) %>% ungroup()
+
+  overall = dat_st %>%
+    dplyr::select(all_of(vars_used)) %>%
+    summarise(across(everything(), stat, .names = "{.col}__{.fn}", na.rm=T)) %>%
     pivot_longer(names_to = 'key', values_to = 'value', cols = everything()) %>%
     separate(key, into = c("variable", "stat"), sep = "__") %>%
     pivot_wider(id_cols = variable, names_from = stat, values_from = value)
   
-  overall[,-1] = lapply(overall[,-1], sprintf, fmt = "%.1f")
+  overall[,-1] = lapply(overall[,-1], sprintf, fmt = "%.2f")
   
   # combining
   sumstat_fin <- sumstat %>%
     full_join(overall, by = "variable") %>%
-    #mutate(across(where(is.numeric), round, 2)) %>%
     mutate_all(~ ifelse(is.na(.), "", .)) %>%
-    select(-variable) %>%
+    dplyr::select(-variable) %>%
     add_column(`Names` = rownames, .before = 1)
   
+  if (quant == T){
+    
   # if IQR == T
   colnames(sumstat_fin) = sub('_', '', colnames(sumstat_fin))
   suffixes = unique(sub("^Q\\d{2}", "", grep("^Q25", colnames(sumstat_fin), value = T)))
@@ -1261,16 +1308,18 @@ summarize_data = function(dat = df_before_scaling,
     q25_col <- paste0("Q25", suffixes[i])
     q75_col <- paste0("Q75", suffixes[i])
     sumstat_fin = sumstat_fin %>% 
-      mutate(!!q25_col := paste(!!sym(q25_col), !!sym(q75_col), sep = "-")) %>%
-      select(-!!q75_col) %>% rename(!!!setNames(q25_col, paste0('IQR',suffixes[i])))
+      mutate(!!q25_col := paste0('[', !!sym(q25_col), ';', !!sym(q75_col), ']')) %>%
+      dplyr::select(-!!q75_col) %>% rename(!!!setNames(q25_col, paste0('IQR',suffixes[i])))
   }
   
   stat_names = c(stat_names[!stat_names %in% c("Q25", "Q75")], 'IQR')
   sumstat_fin %<>%
-    mutate_all(~ ifelse(. == '-', "", .))
-  
+    mutate_all(~ ifelse(. == '[;]', "", .))
+  }
+
   # adding names
   colnames(sumstat_fin)[1] <- ""
+  dat = as.data.frame(dat)
   year_vec = as.vector(unique(dat[,year]))
   blank_rep = rep('', (length(stat_names)-1))
   colnames(sumstat_fin) <- c('', c(sapply(year_vec, function(.) c(., blank_rep))),

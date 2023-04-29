@@ -22,22 +22,6 @@ options(max.print=3900)
 # loading the data
 df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
 
-# class
-df$London = ifelse(df$class == 'L', 1, 0)
-#df$MD = ifelse(df$class == 'MD', 1, 0)
-df$SD = ifelse(df$class == 'SD', 1, 0)
-
-# out
-# rm = c('E07000211', 'E06000019',
-#        'E06000039', 'E09000018',
-#        'E06000012',
-#        'E06000036'
-#        )
-
-# df %<>% filter(!LAD21CD %in% rm)# %>% filter(year > 2013)
-# df$time = df$year - (min(df$year)-1)
-# table(df$time)
-
 # a dataset for descriptive stat
 df_before_scaling = df
 df_before_scaling$z_mh_rate = -df_before_scaling$z_mh_rate
@@ -46,30 +30,29 @@ df_before_scaling$est_qof_dep = -df_before_scaling$est_qof_dep
 df_before_scaling$prop_ibesa = -df_before_scaling$prop_ibesa
 df_before_scaling$samhi_index = -df_before_scaling$samhi_index
 
-
-
-# normalising from 0 to 10 to facilitate the convergence of SEM models
-for (i in health_vars[-c(1:2)]){
+# Z-scores for health
+for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
   df[, i] = scale(df[, i])
 }
 
-for (i in c(#health_vars,
-  control_names[!control_names %in% c('public_health_mean',
+# scale for controls
+for (i in control_names[!control_names %in% c('public_health_mean',
                                       'inc_mean',
                                       'rural',
                                       'London',
-                                      'SD')]
-  
-)){
+                                      'SD',
+                                      'MD')]){
   df[, i] = scale(df[, i])
 }
+
+# normalize and log for spending
 for (i in c(policy_names_6,
             control_names[control_names %in% c('public_health_mean', 
                                                'inc_mean')])){
   df[, i] = normalize(log(df[, i]))*10
 }
 
-# flipping the sign
+# flip the sign
 df$z_mh_rate = -df$z_mh_rate
 df$antidep_rate = -df$antidep_rate
 df$est_qof_dep = -df$est_qof_dep
@@ -84,20 +67,20 @@ summary(df_lavaan_mental)
 
 #par(mfrow=c(2,2))
 # quick dist 
-hist(df_lavaan_mental$HE1)
-hist(df$antidep_rate, breaks = 30)
-hist(df$samhi_index, breaks = 30)
-hist(df$z_mh_rate, breaks = 30)
-hist(df$est_qof_dep, breaks = 30)
-hist(df$prop_ibesa, breaks = 30)
-
-hist(df$social_care_adult, breaks = 30)
-hist(df$social_care_children, breaks = 30)
-hist(df$healthcare, breaks = 30)
-hist(df$env, breaks = 30)
-hist(df$law_order, breaks = 30)
-hist(df$infrastructure, breaks = 30)
-hist(df$public_health, breaks = 30)
+# hist(df_lavaan_mental$HE1)
+# hist(df$antidep_rate, breaks = 30)
+# hist(df$samhi_index, breaks = 30)
+# hist(df$z_mh_rate, breaks = 30)
+# hist(df$est_qof_dep, breaks = 30)
+# hist(df$prop_ibesa, breaks = 30)
+# 
+# hist(df$social_care_adult, breaks = 30)
+# hist(df$social_care_children, breaks = 30)
+# hist(df$healthcare, breaks = 30)
+# hist(df$env, breaks = 30)
+# hist(df$law_order, breaks = 30)
+# hist(df$infrastructure, breaks = 30)
+# hist(df$public_health, breaks = 30)
 
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
@@ -116,6 +99,7 @@ only_growth_fit = sem(only_growth_syntax,
                       cluster = 'LAD21CD')
 fm_only_growth_fit = fitmeasures(only_growth_fit, measures)
 #summary(only_growth_fit, standardized=T)
+gc()
 
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
@@ -128,15 +112,16 @@ riclpm_fit = sem(riclpm_syntax,
 )
 fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
 #summary(riclpm_fit, standardized=T)
+gc()
 
 # # 2. RC-CLPM
-# rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm')
+# rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
+#                                control = c('lsoa_ses_score '))
 # rcclpm_fit = sem(rcclpm_syntax,
 #                  data = df_lavaan_mental,
 #                  estimator = "mlr",
 #                  orthogonal = T,
-#                  cluster = 'LAD21CD'
-# )
+#                  cluster = 'LAD21CD')
 # beepr::beep()
 # fm_rcclpm_fit = fitmeasures(rcclpm_fit, measures)
 # # summary(rcclpm_fit, standardized=T)
@@ -145,9 +130,9 @@ fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
 # rigclm_syntax = RC_GCLM_syntax(model = 'regclm',
 #                                no_slopes = no_slopes)
 # rigclm_fit = sem(rigclm_syntax,
-#                  data = df_lavaan_mental, 
+#                  data = df_lavaan_mental,
 #                  estimator = "mlr",
-#                  orthogonal = T, 
+#                  orthogonal = T,
 #                  cluster = 'LAD21CD'
 # )
 # beepr::beep()
@@ -182,9 +167,10 @@ rcgclm_fit_h = sem(rcgclm_syntax_h,
 beepr::beep()
 fm_rcgclm_fit_h = fitmeasures(rcgclm_fit_h, measures)
 #summary(rcgclm_fit_h, standardized=T)
+gc()
 
 # ---------------------------------------------------------------------
-# ------------------------------- Robustness --------------------------
+# ------------------------------- Sensitivity -------------------------
 # ---------------------------------------------------------------------
 
 # 1. Without London
@@ -199,6 +185,7 @@ rcgclm_L_fit = sem(rcgclm_syntax_L,
 beepr::beep()
 #summary(rcgclm_L_fit, standardized=T)
 fm_rcgclm_L_fit = fitmeasures(rcgclm_L_fit, measures)
+gc()
 
 # 2. Without outliers: 3*IQR
 
@@ -229,6 +216,7 @@ rcgclm_outliers_3_fit = sem(rcgclm_syntax,
 beepr::beep()
 #summary(rcgclm_outliers_3_fit, standardized=T)
 fm_rcgclm_outliers_3_fit = fitmeasures(rcgclm_outliers_3_fit, measures)
+gc()
 
 # 3. Without outliers: 1.5*IQR
 
@@ -251,6 +239,7 @@ rcgclm_outliers_1.5_fit = sem(rcgclm_syntax_L,
 beepr::beep()
 #summary(rcgclm_outliers_1.5_fit, standardized=T)
 fm_rcgclm_outliers_1.5_fit = fitmeasures(rcgclm_outliers_1.5_fit, measures)
+gc()
 
 # ---------------------------------------------------------------------
 # -------------------------------- Indices-- --------------------------
@@ -271,6 +260,7 @@ mental_sub1_fit = sem(mental_sub_syntax,
 #summary(mental_sub1_fit, standardized=T)
 
 fm_mental_sub1_fit = fitmeasures(mental_sub1_fit, measures)
+gc()
 
 # 2. QOF – Depression (%)
 df_lavaan_mental_sub2 = lavaan_df(dv = 'est_qof_dep',
@@ -283,6 +273,7 @@ mental_sub2_fit = sem(mental_sub_syntax,
 )
 #summary(mental_sub2_fit, standardized=T)
 fm_mental_sub2_fit = fitmeasures(mental_sub2_fit, measures)
+gc()
 
 # 3. ADQ of antidepressants per person
 
@@ -296,6 +287,7 @@ mental_sub3_fit = sem(mental_sub_syntax,
 )
 fm_mental_sub3_fit = fitmeasures(mental_sub3_fit, measures)
 #summary(mental_sub3_fit, standardized=T)
+gc()
 
 # 4. Hospital admissions (z-scores)
 
@@ -310,6 +302,7 @@ mental_sub4_fit = sem(mental_sub_syntax,
 beepr::beep()
 #summary(mental_sub4_fit, standardized=T)
 fm_mental_sub4_fit = fitmeasures(mental_sub4_fit, measures)
+gc()
 
 # # ----------------------------------------------------------------------
 # # ----------------------------- Output ---------------------------------
@@ -353,30 +346,29 @@ cor_tab = as.data.frame(cor_tab)
 colnames(cor_tab) = 1:ncol(cor_tab)
 rownames(cor_tab) = nm_out
 
-row_column_numering = function(dat){
+row_column_numbering = function(dat){
   dat %<>% rownames_to_column(var = ' ')
   dat = cbind.data.frame(1:nrow(dat), dat)
   colnames(dat) = c('','', 1:(ncol(dat)-2))
   return(dat)
 }
-cor_tab = row_column_numering(cor_tab)
+cor_tab = row_column_numbering(cor_tab)
 
 # # ----------------------------------------------------------------------
 
-# 3. Random effects correlations - main model
+# 3.1 Correlations - Random effects - main model
 
 # effects_all = CoefsExtract(models = c('only_growth_fit',
 #                                       'riclpm_fit',
 #                                       'rcgclm_fit',
 #                                       'rcgclm_fit_h'),
-#              growth = c(paste0('i', endogeneous), 
+#              growth = c(paste0('i', endogeneous),
 #                         paste0('s', endogeneous)))
 
 # keeping covariances only
-d_growth_cov = effects_all %>% filter(type == 'd_growth_cov') %>% 
+d_growth_cov = effects_all %>% filter(type == 'e_growth_cov') %>% 
   dplyr:: select(id, ends_with('long'))
 d_growth_cov = d_growth_cov[,c('id', 'est.std.x.x_long')]
-#d_growth_cov$est.std.y_long = gsub("\\[.*?\\]", '', d_growth_cov$est.std.y_long)
 
 # applying the function
 growthcor = MatrixEffects(dat = d_growth_cov,
@@ -407,13 +399,14 @@ int_int = growthcor[1:7,1:7]
 int_slope = growthcor[1:7,8:14]
 slope_slope = growthcor[8:14,8:14]
 
-int_int = row_column_numering(int_int)
-int_slope = row_column_numering(int_slope)
-slope_slope = row_column_numering(slope_slope)
+int_int = row_column_numbering(int_int)
+int_slope = row_column_numbering(int_slope)
+colnames(int_slope) = c('', '', all_nam[grepl('Slope', all_nam)])
+slope_slope = row_column_numbering(slope_slope)
 
 # # ----------------------------------------------------------------------
 
-# 4.1 Regression table - main
+# 3.2 Correlations - impulses - all models 
 
 end_new = c('Mental Health',
             'Adult Social Care',
@@ -422,6 +415,56 @@ end_new = c('Mental Health',
             'Environment',
             'Law and Order', 
             'Infrastructure')
+
+# extracting impulses
+
+d_impulse_cov = effects_all %>% filter(type == 'd_impulse_cov') %>% 
+  dplyr:: select(id, ends_with('long'))
+d_impulse_cov$id = sub('e_', '', d_impulse_cov$id)
+
+pars_vec = c("est.std.x_long",
+             "est.std.y_long",
+             "est.std.x.x_long",
+             "est.std.y.y_long")
+
+# extracting correlations (the warning is ok)
+
+lst_implulse_cov = list()
+for (i in seq_along(pars_vec)){
+  
+  lst_implulse_cov[[i]] =  MatrixEffects(dat = d_impulse_cov,
+                                         cor_name = 'id',
+                                         pars = pars_vec[i],
+                                         cor = T,
+                                         colnames = endogeneous,
+                                         rownames = endogeneous)
+  mat = lst_implulse_cov[[i]]
+  tri = upper.tri(mat, diag = T)
+  lst_implulse_cov[[i]] = as.data.frame(cbind(rownames(mat)[row(mat)[tri]],
+                                              colnames(mat)[col(mat)[tri]],
+                                              as.vector(mat[tri])))
+  colnames(lst_implulse_cov[[i]]) = c('id1', 'id2', 'impulse_cov')
+}
+# Warning message:
+#   In cov2cor(as.matrix(pivot)) :
+#   diag(.) had 0 or NA entries; non-finite result is doubtful
+
+# cleaning the table
+
+impulse_cor = lst_implulse_cov %>% 
+  reduce(full_join, by = c('id1', 'id2'))
+col = c('id1', 'id2')
+impulse_cor[, col] = apply(impulse_cor[, col], 2, function(x) end_new[match(x, endogeneous)])
+impulse_cor = impulse_cor[order(match(impulse_cor$id1, end_new)), ]
+impulse_cor[impulse_cor == 'NA'] = ''
+colnames(impulse_cor) = c('', '', 'Model 1.1', 'Model 1.2', 'Model 1.3', 'Model 1.4')
+impulse_cor = CiSplit(impulse_cor)
+
+# # ----------------------------------------------------------------------
+
+# 4.1 Regression table - main
+
+
 parameters = c('Number of Parameters',
                'Chi-Squared',
                'Degrees of Freedom',
@@ -437,8 +480,8 @@ parameters = c('Number of Parameters',
                'Log-Likelihood')
 
 section_names = c('Autoregressive Effects',
-                  'Cross-Lagged Effects of Mental Health on Spending',
-                  'Cross-Lagged Effects of Spending on Mental Health',
+                  'Cross-Lagged Effects: Mental Health -> Spending',
+                  'Cross-Lagged Effects: Spending -> Mental Health',
                   'Random Intercepts',
                   'Random Slopes',
                   'Fit Measures (Scaled)')
@@ -452,18 +495,17 @@ fit_measures_seq[] = lapply(fit_measures_seq, sprintf, fmt = "%.3f")
 # create tables with effects and fit measures
 
 TableEffects = function(dat = effects_all,
-                         .end_new = end_new,
-                         .parameters = parameters,
-                         .section_names = section_names,
-                         fit_measures = NULL) {
+                        .end_new = end_new,
+                        .parameters = parameters,
+                        .section_names = section_names,
+                        fit_measures = NULL) {
   
   patterns = c("~HE|HE~#",
                 "~as|as~#", "~cs|cs~#", "~hc|hc~#",
                 "~en|en~#", "~lo|lo~#", "~fr|fr~#")
-  
+
   dat = dat %>%
-    #filter(!grepl("~~", id)) %>%
-    filter(!type %in% c('d_growth_cov', 'f_other_policies', 'g_controls')) %>%
+    filter(!type %in% c('d_impulse_cov', 'e_growth_cov', 'g_other_policies', 'h_controls')) %>%
     mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
                                                         .end_new[match(y, patterns)], x), 
                        .init = id)) %>%
@@ -514,7 +556,7 @@ indices_models_coefs[10:15,1] = end_new[2:7]
 
 # 4.3 Regression table - sensitivity
 
-# sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_L_fit', 
+# sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_L_fit',
 #                                                     'rcgclm_outliers_3_fit',
 #                                                     'rcgclm_outliers_1.5_fit'),
 #                                      growth = c(paste0('i', endogeneous),
@@ -533,22 +575,22 @@ sensitivity_models_coefs[10:15,1] = end_new[2:7]
 
 # 5. Main model - effects of spendings on each other
 
-f_other_policies = effects_all %>% filter(type %in% c('f_other_policies',
+other_policies = effects_all %>% filter(type %in% c('g_other_policies',
                                                       'a_auto') &
                                             !grepl('HE', id))
-f_other_policies_long = f_other_policies[,c('id', 'est.std.x.x_long')]
-f_other_policies_short = f_other_policies[,c('id', 'est.std.x.x_short')]
-#f_other_policies$est.std.x.x_long = gsub("\\[.*?\\]", '', f_other_policies$est.std.x.x_long)
+other_policies_long = other_policies[,c('id', 'est.std.x.x_long')]
+other_policies_short = other_policies[,c('id', 'est.std.x.x_short')]
+#other_policies$est.std.x.x_long = gsub("\\[.*?\\]", '', other_policies$est.std.x.x_long)
 
 # applying the function
-other_policies_matrix_long = MatrixEffects(dat = f_other_policies_long,
+other_policies_matrix_long = MatrixEffects(dat = other_policies_long,
                                 cor_name = 'id',
                                 colnames = endogeneous[-1],
                                 rownames = endogeneous[-1],
                                 pars = 'est.std.x.x_long',
                                 cor = F,
                                 sep = '~') 
-other_policies_matrix_short = MatrixEffects(dat = f_other_policies_short,
+other_policies_matrix_short = MatrixEffects(dat = other_policies_short,
                                            cor_name = 'id',
                                            colnames = endogeneous[-1],
                                            rownames = endogeneous[-1],
@@ -562,18 +604,18 @@ dimnames(other_policies_matrix_short) = list(nm_out[6:11], nm_out[6:11])
 
 # 6. Main model - controls
 
-g_controls = effects_all %>% filter(type == 'g_controls')
-g_controls = g_controls[,c('id', 'est.std.x.x_long')]
-#g_controls$est.std.x.x_long = gsub("\\[.*?\\]", '', g_controls$est.std.x.x_long)
+controls = effects_all %>% filter(type == 'h_controls')
+controls = controls[,c('id', 'est.std.x.x_long')]
+#controls$est.std.x.x_long = gsub("\\[.*?\\]", '', controls$est.std.x.x_long)
 
 # applying the function
-controls_matrix = MatrixEffects(dat = g_controls,
+controls_matrix = MatrixEffects(dat = controls,
                                 cor_name = 'id',
                                 rownames = gsub('[[:digit:]]+', '', control_names),
                                 pars = 'est.std.x.x_long',
                                 cor = F,
                                 sep = '~') 
-dimnames(controls_matrix) = list(nm_out[12:22], rep(nm_out[c(1,6:11)],2))
+dimnames(controls_matrix) = list(nm_out[12:23], rep(nm_out[c(1,6:11)],2))
 controls_inter_mat = controls_matrix[,1:7]
 controls_slope_mat = controls_matrix[,8:14]
 
@@ -640,12 +682,14 @@ col_pct = c('',
             'Model 2.3', '',
             'Model 2.4', '')
 
+# a function to create a head with the long-run and short-run indication
+
 SubHead = function(tab, which_null = NULL, n, colnames){
   
   head = c('', rep(c('Long-run', 'Short-run'), n))
   
   if (!is.null(which_null)){
-    head= head[-which_null]
+    head = head[-which_null]
   }
   
   tab = rbind.data.frame(head, tab)
@@ -656,16 +700,11 @@ SubHead = function(tab, which_null = NULL, n, colnames){
 
 # Main text
 
-sumstat_fin
-
 seq_models_coefs = SubHead(CiSplit(seq_models_coefs),
                            which_null = c(3,5),
                            n = 4,
                            colnames = col_seq)
-indices_models_coefs = SubHead(CiSplit(indices_models_coefs),
-                               n = 4,
-                               colnames = col_ind)
-
+seq_models_coefs[1,2:3] = ''
 
 pct_coef = SubHead(CiSplit(pct_coef),
                    n = 5,
@@ -673,12 +712,12 @@ pct_coef = SubHead(CiSplit(pct_coef),
 
 # Appendices
 
+sumstat_fin
+
+impulse_cor = CiSplit(impulse_cor)
 int_int = CiSplit(int_int, rownm = F)
 int_slope = CiSplit(int_slope, rownm = F)
 slope_slope = CiSplit(slope_slope, rownm = F)
-sensitivity_models_coefs = SubHead(CiSplit(sensitivity_models_coefs),
-                                   n = 3,
-                                   colnames = col_sens)
 
 controls_inter_mat = CiSplit(controls_inter_mat, rownm = T)
 controls_slope_mat = CiSplit(controls_slope_mat, rownm = T)
@@ -691,32 +730,47 @@ other_policies_matrix = rbind.data.frame(Long,
                                          other_policies_matrix_long,
                                          Short,
                                          other_policies_matrix_short)
+
+indices_models_coefs = SubHead(CiSplit(indices_models_coefs),
+                               n = 4,
+                               colnames = col_ind)
+sensitivity_models_coefs = SubHead(CiSplit(sensitivity_models_coefs),
+                                   n = 3,
+                                   colnames = col_sens)
+
 cor_tab
 
 # writing to word
 library(officer)
 
 # Create a list of data frames
-df_list <- list(
+df_list = list(
   
   # main
   
-  sumstat_fin,
   seq_models_coefs,
-  indices_models_coefs,
   pct_coef,
   
   # Appendices
   
+  sumstat_fin,
+  impulse_cor,
+  indices_models_coefs,
+  
+  # for the main model
   int_int,
   int_slope,
   slope_slope,
-  sensitivity_models_coefs,
   controls_inter_mat,
   controls_slope_mat,
   other_policies_matrix,
-  cor_tab
+  
+  cor_tab,
+  
+  sensitivity_models_coefs
 )
+
+# treating empty colnames in officer
 
 replace_empty_colnames <- function(df) {
   colnames <- names(df)
@@ -729,8 +783,6 @@ replace_empty_colnames <- function(df) {
 }
 df_list <- lapply(df_list, replace_empty_colnames)
 
-
-df_list = lapply(df_list, as.data.frame)
 
 # Create a Word document
 doc <- read_docx()
@@ -760,6 +812,11 @@ print(doc, target = "C:/Users/ru21406/YandexDisk/PhD Research/Literature review/
 
 library(ggpubr)
 
+# Z-scores for health domains
+for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+  df_before_scaling[, i] = scale(df_before_scaling[, i])
+}
+
 all_vars = c(health_vars,
              policy_names_6)
 panel_df = df_before_scaling %>%
@@ -773,30 +830,30 @@ for (i in 1:length(all_vars)){
     ggplot(aes(year, !!sym(all_vars[i]))) +
     scale_x_continuous(name = NULL, 
                        breaks = 2013:2019)+ 
-    scale_y_continuous(name = NULL
-    ) + 
-    theme(axis.text = element_text(size = 24)) + 
-    theme(axis.title.x = element_text(size = 24)) +
+    scale_y_continuous(name = NULL)  +
     geom_line(aes(group = LAD21CD), color = "lightblue") +
     geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
-    theme_pubclean()
+    theme_pubclean() + 
+    theme(axis.text = element_text(size = 24)) + 
+    theme(axis.title.x = element_text(size = 24))
 }
 
 # health variables
-ggarrange(list_plots[[5]],
+ggarrange(list_plots[[1]],
+          list_plots[[5]],
           list_plots[[4]],
           list_plots[[3]],
           list_plots[[2]],
-          list_plots[[1]],
-          labels = c('Incapacity Benefits Rate',
-                     'Depression Rate',
-                     'Antidepressants Rate',
-                     'Hospital Attendances Score',
-                     'Mental Health Index'
+          labels = c('           SAMHI',
+                     'Incapacity Benefits',
+                     'Depression',
+                     'Antidepressants',
+                     'Hospital Admission'
           ),
           ncol = 3, nrow = 2,
-          font.label = list(size = 14), align ='h')
-ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/output/mhealth_lineplots.jpeg")
+          font.label = list(size = 30), align ='hv')
+ggsave("C:/Users/ru21406/YandexDisk/PhD Research/Literature review/mhealth_lineplots.jpeg",
+       width = 60, height = 40, units = 'cm')
 
 # policies
 ggarrange(list_plots[[6]],
@@ -813,8 +870,9 @@ ggarrange(list_plots[[6]],
                      'Infrastructure'
           ),
           ncol = 3, nrow = 2,
-          font.label = list(size = 14))
-ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/output/spending_lineplots.jpeg")
+          font.label = list(size = 30), align ='hv')
+ggsave("C:/Users/ru21406/YandexDisk/PhD Research/Literature review/spending_lineplots.jpeg",
+       width = 60, height = 40, units = 'cm')
 
 
 
