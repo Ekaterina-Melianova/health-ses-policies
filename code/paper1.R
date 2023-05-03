@@ -24,11 +24,8 @@ df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/
 
 # a dataset for descriptive stat
 df_before_scaling = df
-df_before_scaling$z_mh_rate = -df_before_scaling$z_mh_rate
-df_before_scaling$antidep_rate = -df_before_scaling$antidep_rate
-df_before_scaling$est_qof_dep = -df_before_scaling$est_qof_dep
-df_before_scaling$prop_ibesa = -df_before_scaling$prop_ibesa
-df_before_scaling$samhi_index = -df_before_scaling$samhi_index
+df_before_scaling %<>%
+  mutate_at(vars(all_of(health_vars)), ~ -.)
 
 # Z-scores for health
 for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
@@ -45,29 +42,29 @@ for (i in control_names[!control_names %in% c('public_health_mean',
   df[, i] = scale(df[, i])
 }
 
+# a dataframe for the sensitivity analysis
+df_for_outliers = df
+
 # normalize and log for spending
 for (i in c(policy_names_6,
-            control_names[control_names %in% c('public_health_mean', 
+            control_names[control_names %in% c('public_health_mean',
                                                'inc_mean')])){
-  df[, i] = normalize(log(df[, i]))*10
+  df[, i] = scale(log(df[, i]))
 }
 
 # flip the sign
-df$z_mh_rate = -df$z_mh_rate
-df$antidep_rate = -df$antidep_rate
-df$est_qof_dep = -df$est_qof_dep
-df$prop_ibesa = -df$prop_ibesa
-df$samhi_index = -df$samhi_index
+df = df %>%
+  mutate_at(vars(all_of(health_vars)), ~ -.)
 
 # final dataset - wide format
-df_lavaan_mental = lavaan_df(dv = 'samhi_index',
+df_lv = lavaan_df(dv = 'samhi_index',
                              df = df)
-df_lavaan_mental = as.data.frame(na.omit(df_lavaan_mental))
-summary(df_lavaan_mental)
+df_lv = as.data.frame(na.omit(df_lv))
+summary(df_lv)
 
 #par(mfrow=c(2,2))
 # quick dist 
-# hist(df_lavaan_mental$HE1)
+# hist(df_lv$HE1)
 # hist(df$antidep_rate, breaks = 30)
 # hist(df$samhi_index, breaks = 30)
 # hist(df$z_mh_rate, breaks = 30)
@@ -93,7 +90,7 @@ only_growth_syntax = RC_GCLM_syntax(model = 'regclm',
                                     impulses = F,
                                     past_states = F)
 only_growth_fit = sem(only_growth_syntax,
-                      data = df_lavaan_mental, 
+                      data = df_lv, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD')
@@ -105,9 +102,9 @@ gc()
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
                                no_slopes = no_slopes)
 riclpm_fit = sem(riclpm_syntax,
-                 data = df_lavaan_mental, 
+                 data = df_lv,
                  estimator = "mlr",
-                 orthogonal = T, 
+                 orthogonal = T,
                  cluster = 'LAD21CD'
 )
 fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
@@ -118,7 +115,7 @@ gc()
 # rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
 #                                control = c('lsoa_ses_score '))
 # rcclpm_fit = sem(rcclpm_syntax,
-#                  data = df_lavaan_mental,
+#                  data = df_lv,
 #                  estimator = "mlr",
 #                  orthogonal = T,
 #                  cluster = 'LAD21CD')
@@ -130,7 +127,7 @@ gc()
 # rigclm_syntax = RC_GCLM_syntax(model = 'regclm',
 #                                no_slopes = no_slopes)
 # rigclm_fit = sem(rigclm_syntax,
-#                  data = df_lavaan_mental,
+#                  data = df_lv,
 #                  estimator = "mlr",
 #                  orthogonal = T,
 #                  cluster = 'LAD21CD'
@@ -144,7 +141,7 @@ gc()
 # 4. RC-GCLM
 rcgclm_syntax = RC_GCLM_syntax(model = 'regclm')
 rcgclm_fit = sem(rcgclm_syntax,
-                 data = df_lavaan_mental, 
+                 data = df_lv, 
                  estimator = "mlr",
                  orthogonal = T, 
                  cluster = 'LAD21CD'
@@ -159,7 +156,7 @@ rcgclm_syntax_h = RC_GCLM_syntax(model = 'regclm',
                                  endogeneous = c('HE', 'as', 'cs', 'hc')
                                  )
 rcgclm_fit_h = sem(rcgclm_syntax_h,
-                   data = df_lavaan_mental, 
+                   data = df_lv, 
                    estimator = "mlr",
                    orthogonal = T, 
                    cluster = 'LAD21CD'
@@ -173,11 +170,33 @@ gc()
 # ------------------------------- Sensitivity -------------------------
 # ---------------------------------------------------------------------
 
+df_noLondon = df_for_outliers
+
+# filter first
+df_noLondon %<>% filter(!class == 'L')
+
+# normalize and log for spending
+for (i in c(policy_names_6,
+            control_names[control_names %in% c('public_health_mean',
+                                               'inc_mean')])){
+  df_noLondon[, i] = scale(log(df_noLondon[, i]))
+}
+
+# flip the sign
+df_noLondon %<>% mutate_at(vars(all_of(health_vars)), ~ -.)
+
+# final dataset - wide format
+df_noLondon_lv = lavaan_df(dv = 'samhi_index',
+                              df = df_noLondon)
+df_noLondon_lv = as.data.frame(na.omit(df_noLondon_lv))
+summary(df_noLondon_lv)
+
+
 # 1. Without London
-rcgclm_syntax_L = RC_GCLM_syntax(model = 'regclm',
-                                 control = control_names[!control_names %in% 'London'])
-rcgclm_L_fit = sem(rcgclm_syntax_L,
-                   data = df_lavaan_mental[!df_lavaan_mental$class == 'L',], 
+rcgclm_syntax_noLondon = RC_GCLM_syntax(model = 'regclm',
+                                        control = control_names[!control_names %in% 'London'])
+rcgclm_L_fit = sem(rcgclm_syntax_noLondon,
+                   data = df_noLondon_lv, 
                    estimator = "mlr",
                    orthogonal = T, 
                    cluster = 'LAD21CD'
@@ -197,18 +216,30 @@ remove_outliers = function(x, k) {
   x
 }
 
-df_outliers_3 = df %>% group_by(year) %>%
+df_outliers_3 = df_for_outliers %>% group_by(year) %>%
   mutate_at(vars(all_of(c(policy_names_6,
                           'samhi_index'))),
             ~remove_outliers(., k = 3)) %>%
-  na.omit()
-df_lavaan_outliers_3 = lavaan_df(dv = 'samhi_index',
+  na.omit() %>% ungroup()
+
+# normalize and log for spending
+for (i in c(policy_names_6,
+            control_names[control_names %in% c('public_health_mean',
+                                               'inc_mean')])){
+  df_outliers_3[, i] = scale(log(df_outliers_3[, i]))
+}
+
+# flip the sign
+df_outliers_3 %<>% mutate_at(vars(all_of(health_vars)), ~ -.)
+
+
+df_outliers_3_lv = lavaan_df(dv = 'samhi_index',
                                df = df_outliers_3)
-df_lavaan_outliers_3 = as.data.frame(na.omit(df_lavaan_outliers_3))
-#summary(df_lavaan_outliers_3)
+df_outliers_3_lv = as.data.frame(na.omit(df_outliers_3_lv))
+#summary(df_outliers_3_lv)
 
 rcgclm_outliers_3_fit = sem(rcgclm_syntax,
-                 data = df_lavaan_outliers_3, 
+                 data = df_outliers_3_lv, 
                  estimator = "mlr",
                  orthogonal = T, 
                  cluster = 'LAD21CD'
@@ -220,18 +251,30 @@ gc()
 
 # 3. Without outliers: 1.5*IQR
 
-df_outliers_1.5 = df %>% group_by(year) %>%
+df_outliers_1.5 = df_for_outliers %>% group_by(year) %>%
   mutate_at(vars(all_of(c(policy_names_6,
                           'samhi_index'))),
             ~remove_outliers(., k = 1.5)) %>%
-  na.omit()
-df_lavaan_outliers_1.5 = lavaan_df(dv = 'samhi_index',
-                                 df = df_outliers_1.5)
-df_lavaan_outliers_1.5 = as.data.frame(na.omit(df_lavaan_outliers_1.5))
-#summary(df_lavaan_outliers_1.5)
+  na.omit() %>% ungroup()
 
-rcgclm_outliers_1.5_fit = sem(rcgclm_syntax_L,
-                            data = df_lavaan_outliers_1.5, 
+# normalize and log for spending
+for (i in c(policy_names_6,
+            control_names[control_names %in% c('public_health_mean',
+                                               'inc_mean')])){
+  df_outliers_1.5[, i] = scale(log(df_outliers_1.5[, i]))
+}
+
+# flip the sign
+df_outliers_1.5 %<>% mutate_at(vars(all_of(health_vars)), ~ -.)
+
+
+df_outliers_1.5_lv = lavaan_df(dv = 'samhi_index',
+                               df = df_outliers_1.5)
+df_outliers_1.5_lv = as.data.frame(na.omit(df_outliers_1.5_lv))
+#summary(df_outliers_1.5_lv)
+
+rcgclm_outliers_1.5_fit = sem(rcgclm_syntax_noLondon,
+                            data = df_outliers_1.5_lv, 
                             estimator = "mlr",
                             orthogonal = T, 
                             cluster = 'LAD21CD'
@@ -249,59 +292,58 @@ mental_sub_syntax = RC_GCLM_syntax(model = 'regclm')
 
 # 1. IBESA (%)
 
-df_lavaan_mental_sub1 = lavaan_df(dv = 'prop_ibesa',
+df_lv_sub1 = lavaan_df(dv = 'prop_ibesa',
                                   df = df)
 mental_sub1_fit = sem(mental_sub_syntax,
-                      data = df_lavaan_mental_sub1, 
+                      data = df_lv_sub1, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
 #summary(mental_sub1_fit, standardized=T)
-
-fm_mental_sub1_fit = fitmeasures(mental_sub1_fit, measures)
+fm_sub1_fit = fitmeasures(mental_sub1_fit, measures)
 gc()
 
 # 2. QOF – Depression (%)
-df_lavaan_mental_sub2 = lavaan_df(dv = 'est_qof_dep',
+df_lv_sub2 = lavaan_df(dv = 'est_qof_dep',
                                   df = df)
 mental_sub2_fit = sem(mental_sub_syntax,
-                      data = df_lavaan_mental_sub2, 
+                      data = df_lv_sub2, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
 #summary(mental_sub2_fit, standardized=T)
-fm_mental_sub2_fit = fitmeasures(mental_sub2_fit, measures)
+fm_sub2_fit = fitmeasures(mental_sub2_fit, measures)
 gc()
 
 # 3. ADQ of antidepressants per person
 
-df_lavaan_mental_sub3 = lavaan_df(dv = 'antidep_rate',
+df_lv_sub3 = lavaan_df(dv = 'antidep_rate',
                                   df = df)
 mental_sub3_fit = sem(mental_sub_syntax,
-                      data = df_lavaan_mental_sub3, 
+                      data = df_lv_sub3, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
-fm_mental_sub3_fit = fitmeasures(mental_sub3_fit, measures)
+fm_sub3_fit = fitmeasures(mental_sub3_fit, measures)
 #summary(mental_sub3_fit, standardized=T)
 gc()
 
 # 4. Hospital admissions (z-scores)
 
-df_lavaan_mental_sub4 = lavaan_df(dv = 'z_mh_rate',
+df_lv_sub4 = lavaan_df(dv = 'z_mh_rate',
                                   df = df)
 mental_sub4_fit = sem(mental_sub_syntax,
-                      data = df_lavaan_mental_sub4, 
+                      data = df_lv_sub4, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
 beepr::beep()
 #summary(mental_sub4_fit, standardized=T)
-fm_mental_sub4_fit = fitmeasures(mental_sub4_fit, measures)
+fm_sub4_fit = fitmeasures(mental_sub4_fit, measures)
 gc()
 
 # # ----------------------------------------------------------------------
@@ -358,12 +400,12 @@ cor_tab = row_column_numbering(cor_tab)
 
 # 3.1 Correlations - Random effects - main model
 
-# effects_all = CoefsExtract(models = c('only_growth_fit',
-#                                       'riclpm_fit',
-#                                       'rcgclm_fit',
-#                                       'rcgclm_fit_h'),
-#              growth = c(paste0('i', endogeneous),
-#                         paste0('s', endogeneous)))
+effects_all = CoefsExtract(models = c('only_growth_fit',
+                                      'riclpm_fit',
+                                      'rcgclm_fit',
+                                      'rcgclm_fit_h'),
+             growth = c(paste0('i', endogeneous),
+                        paste0('s', endogeneous)))
 
 # keeping covariances only
 d_growth_cov = effects_all %>% filter(type == 'e_growth_cov') %>% 
@@ -464,7 +506,6 @@ impulse_cor = CiSplit(impulse_cor)
 
 # 4.1 Regression table - main
 
-
 parameters = c('Number of Parameters',
                'Chi-Squared',
                'Degrees of Freedom',
@@ -486,9 +527,9 @@ section_names = c('Autoregressive Effects',
                   'Random Slopes',
                   'Fit Measures (Scaled)')
 fit_measures_seq = cbind.data.frame(est.std.x_long = fm_only_growth_fit,
-                                          est.std.y_long = fm_riclpm_fit,
-                                          est.std.x.x_long = fm_rcgclm_fit,
-                                          est.std.y.y_long = fm_rcgclm_fit_h)
+                                    est.std.y_long = fm_riclpm_fit,
+                                    est.std.x.x_long = fm_rcgclm_fit,
+                                    est.std.y.y_long = fm_rcgclm_fit_h)
 
 fit_measures_seq[] = lapply(fit_measures_seq, sprintf, fmt = "%.3f")
 
@@ -501,8 +542,12 @@ TableEffects = function(dat = effects_all,
                         fit_measures = NULL) {
   
   patterns = c("~HE|HE~#",
-                "~as|as~#", "~cs|cs~#", "~hc|hc~#",
-                "~en|en~#", "~lo|lo~#", "~fr|fr~#")
+                "~as|as~#",
+               "~cs|cs~#",
+               "~hc|hc~#",
+                "~en|en~#",
+               "~lo|lo~#",
+               "~fr|fr~#")
 
   dat = dat %>%
     filter(!type %in% c('d_impulse_cov', 'e_growth_cov', 'g_other_policies', 'h_controls')) %>%
@@ -535,16 +580,16 @@ seq_models_coefs[10:15,1] = end_new[2:7]
 
 # 4.2. Regression table - indices
 
-# indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
-#                                                 'mental_sub2_fit',
-#                                                 'mental_sub3_fit',
-#                                                 'mental_sub4_fit'),
-#                                      growth = c(paste0('i', endogeneous),
-#                                                 paste0('s', endogeneous)))
-fit_measures_indices = cbind.data.frame(est.std.x_long = fm_mental_sub1_fit,
-                                              est.std.y_long = fm_mental_sub2_fit,
-                                              est.std.x.x_long = fm_mental_sub3_fit,
-                                              est.std.y.y_long = fm_mental_sub4_fit)
+indices_models_coefs_ = CoefsExtract(models = c('mental_sub1_fit',
+                                                'mental_sub2_fit',
+                                                'mental_sub3_fit',
+                                                'mental_sub4_fit'),
+                                     growth = c(paste0('i', endogeneous),
+                                                paste0('s', endogeneous)))
+fit_measures_indices = cbind.data.frame(est.std.x_long = fm_sub1_fit,
+                                        est.std.y_long = fm_sub2_fit,
+                                        est.std.x.x_long = fm_sub3_fit,
+                                        est.std.y.y_long = fm_sub4_fit)
 fit_measures_indices[] = lapply(fit_measures_indices, sprintf, fmt = "%.3f")
 
 indices_models_coefs = TableEffects(dat = indices_models_coefs_,
@@ -554,21 +599,22 @@ indices_models_coefs[10:15,1] = end_new[2:7]
 
 # # ----------------------------------------------------------------------
 
-# 4.3 Regression table - sensitivity
+# 4.3 Regression table - sensitivity (plus the main model)
 
-# sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_L_fit',
-#                                                     'rcgclm_outliers_3_fit',
-#                                                     'rcgclm_outliers_1.5_fit'),
-#                                      growth = c(paste0('i', endogeneous),
-#                                                 paste0('s', endogeneous)))
-fit_measures_sensitivity = cbind.data.frame(est.std.x_long = fm_rcgclm_L_fit,
-                                              est.std.y_long = fm_rcgclm_outliers_3_fit,
-                                              est.std_long = fm_rcgclm_outliers_1.5_fit)
+sensitivity_models_coefs_ = CoefsExtract(models = c('rcgclm_fit',
+                                                    'rcgclm_L_fit',
+                                                    'rcgclm_outliers_3_fit',
+                                                    'rcgclm_outliers_1.5_fit'),
+                                         growth = c(paste0('i', endogeneous),
+                                                 paste0('s', endogeneous)))
+fit_measures_sensitivity = cbind.data.frame(est.std.x_long = fm_rcgclm_fit,
+                                            est.std.y_long = fm_rcgclm_L_fit,
+                                            est.std.x.x_long = fm_rcgclm_outliers_3_fit,
+                                            est.std.y.y_long = fm_rcgclm_outliers_1.5_fit)
 fit_measures_sensitivity[] = lapply(fit_measures_sensitivity, sprintf, fmt = "%.3f")
 
 sensitivity_models_coefs = TableEffects(dat = sensitivity_models_coefs_,
-                                    fit_measures = fit_measures_sensitivity)
-
+                                        fit_measures = fit_measures_sensitivity)
 sensitivity_models_coefs[10:15,1] = end_new[2:7]
 
 # # ----------------------------------------------------------------------
@@ -625,14 +671,36 @@ controls_slope_mat = controls_matrix[,8:14]
 
 # obtaining a normalising ratio to shift from the log_norm to log interpretation
 
-ratio = c()
+# ratio_health = c()
+# for (i in policy_names_6){
+#   ranges_ratio = (max(df[,i]) - min(df[,i])) / (max(log(df_before_scaling[,i])) - min(log(df_before_scaling[,i])))
+#   ranges_ratio = 1/ranges_ratio
+#   ratio_health = c(ratio_health, ranges_ratio)
+# 
+# }
+# ratio_policy = c()
+# for (i in policy_names_6){
+#   ranges_ratio = (max(df[,i]) - min(df[,i])) / (max(log(df_before_scaling[,i])) - min(log(df_before_scaling[,i])))
+#   ratio_policy = c(ratio_policy, log(1.1)*ranges_ratio)
+#   
+# }
+# id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
+# id_ratio_health = c("as~HE", "cs~HE", "hc~HE", "en~HE", "lo~HE", "fr~HE")
+# id_ratio = c(id_ratio_health, id_ratio_policy)
+# ratio = c(ratio_health, ratio_policy)
+# ratio_df = cbind.data.frame('id' = id_ratio, ratio)
+
+ratio_policy = c()
+df_before_scaling = as.data.frame(df_before_scaling)
 for (i in policy_names_6){
-  ratio = c(ratio, log(1.1)*(max(df[,i]) - min(df[,i])) / (max(log(df_before_scaling[,i])) - min(log(df_before_scaling[,i]))))
-
+  ratio_policy = c(ratio_policy, 10/((exp(sd(log(df_before_scaling[,i])))-1)*100)
+                   )
+  
 }
-id_ratio = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
-ratio_df = cbind.data.frame('id' = id_ratio, ratio)
+id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
+ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
 
+# transforming
 pct_coef = CoefsExtract(models = c('rcgclm_fit',
                                    'mental_sub1_fit',
                                    'mental_sub2_fit',
@@ -643,6 +711,7 @@ pct_coef = CoefsExtract(models = c('rcgclm_fit',
                         df_transform = ratio_df) %>% 
   filter(type == 'c_policy') %>%
   select(-type)
+
 
 pct_coef$id = c('Adult Social Care',
                 'Children Social Care',
@@ -670,13 +739,14 @@ col_ind = c('',
             'Model 2.4', '')
 
 col_sens = c('', 
+             'Model 1.3', '',
              'Model 3.1', '',
              'Model 3.2', '',
              'Model 3.3', '')
 
 
 col_pct = c('', 
-            'Model 1.2', '',
+            'Model 1.3', '',
             'Model 2.1', '',
             'Model 2.2', '',
             'Model 2.3', '',
@@ -735,7 +805,7 @@ indices_models_coefs = SubHead(CiSplit(indices_models_coefs),
                                n = 4,
                                colnames = col_ind)
 sensitivity_models_coefs = SubHead(CiSplit(sensitivity_models_coefs),
-                                   n = 3,
+                                   n = 4,
                                    colnames = col_sens)
 
 cor_tab
@@ -758,6 +828,7 @@ df_list = list(
   indices_models_coefs,
   
   # for the main model
+  
   int_int,
   int_slope,
   slope_slope,

@@ -1,8 +1,13 @@
 
 # normalize
 
-normalize = function(x, na.rm = T)
+normalize = function(x, na.rm = T){
   return((x - min(x)) /(max(x)- min(x)))
+}
+
+normalize_reverse = function(x, na.rm = T){
+  return((x - min(x)) /(max(x)- min(x)))
+}
 
 policy_names_6 = c('social_care_adult',
                    'social_care_children',
@@ -412,8 +417,8 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
   }
 
 # Controls
-  
-  if(model == 'clpm'){
+  if (!is.null(control)){
+    if(model == 'clpm'){
     Control = c()
     for (i in 1:max_time){
       
@@ -430,9 +435,8 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
       
       Control = c(Control, Control_df$out) %>%
         glue_collapse("\n")
-    }
-
-  } else{
+      }
+    } else{
     Control_df = data.frame(c('cntr' = control,
                                 data.frame('end' = endogeneous)))
       
@@ -447,7 +451,10 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
       
       Control = c(Control_df$int_c, Control_df$slope_c) %>%
         glue_collapse("\n")
-  }
+      }
+    } else{
+      Control = ''
+      }
   
   # Impulses and Past States
   
@@ -861,7 +868,7 @@ plot_effects = function(models = growth_impulses_pastst_fit,
 
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
-                        standardized = TRUE,
+                        standardized = F,
                         end = paste0(c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'fr'), '1'),
                         impulses = paste0(c('e_HE', 'e_as', 'e_cs', 'e_hc', 'e_en', 'e_lo', 'e_fr'), '1'),
                         growth = NULL,
@@ -1055,20 +1062,36 @@ CoefsExtract = function(models = NULL,
     
     for (row in seq_along(coef)){
       if(!coefs_wide[[i]][row]==''&!is.na(coefs_wide[[i]][row])){
-        coefs_wide[[i]][row] = paste0(sprintf("%.3f", coefs_wide[row, 'ratio']*coef[row]),
+        
+        if (!is.null(df_transform) & coefs_wide[['type']][row] == 'b_health'){
+          coefs_wide[[i]][row] = paste0(sprintf("%.3f", 100*(exp(coefs_wide[row, 'ratio']*coef[row])-1)),
+                                        signif[row],
+                                        ' [',
+                                        sprintf("%.3f", 100*(exp(coefs_wide[row, 'ratio']*(coef[row] - qt(0.95, df = Inf)*se[row]))-1)
+                                                ),
+                                        '; ',
+                                        sprintf("%.3f", 100*(exp(coefs_wide[row, 'ratio']*(coef[row] + qt(0.95, df = Inf)*se[row]))-1)
+                                                ),
+                                        ']')
+        }else{
+          coefs_wide[[i]][row] = paste0(sprintf("%.3f", coefs_wide[row, 'ratio']*coef[row]),
                               signif[row],
                               ' [',
                               sprintf("%.3f", coefs_wide[row, 'ratio']*(coef[row] - qt(0.95, df = Inf)*se[row])),
                               '; ',
                               sprintf("%.3f", coefs_wide[row, 'ratio']*(coef[row] + qt(0.95, df = Inf)*se[row])),
                               ']')
-      } else{
+        }
+
+        # exp for the effects of health variables on polices (if there is a transformation)
+
+        } else{
         coefs_wide[[i]][row] = ''
       }
     }
 
   }
-  
+
   coefs_wide <- coefs_wide %>%
     select(all_of(ids), starts_with('est')) %>%
     as.data.frame()
