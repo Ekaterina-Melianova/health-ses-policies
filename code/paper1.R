@@ -88,32 +88,32 @@ summary(df_lv)
 # 1. Random Curve Only
 only_growth_syntax = RC_GCLM_syntax(model = 'regclm',
                                     impulses = F,
-                                    past_states = F)
+                                    past_states = F,
+                                    cor = T)
 only_growth_fit = sem(only_growth_syntax,
                       data = df_lv, 
                       estimator = "mlr",
                       orthogonal = T, 
                       cluster = 'LAD21CD')
 fm_only_growth_fit = fitmeasures(only_growth_fit, measures)
-#summary(only_growth_fit, standardized=T)
+#summary(only_growth_fit, std=T, ci = T)
 gc()
 
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
-                               no_slopes = no_slopes)
+                               no_slopes = no_slopes,
+                               cor = T)
 riclpm_fit = sem(riclpm_syntax,
                  data = df_lv,
                  estimator = "mlr",
                  orthogonal = T,
-                 cluster = 'LAD21CD'
-)
+                 cluster = 'LAD21CD')
 fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
-#summary(riclpm_fit, standardized=T)
+#summary(riclpm_fit, std=T, ci = T)
 gc()
 
 # # 2. RC-CLPM
-# rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
-#                                control = c('lsoa_ses_score '))
+# rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm')
 # rcclpm_fit = sem(rcclpm_syntax,
 #                  data = df_lv,
 #                  estimator = "mlr",
@@ -121,7 +121,7 @@ gc()
 #                  cluster = 'LAD21CD')
 # beepr::beep()
 # fm_rcclpm_fit = fitmeasures(rcclpm_fit, measures)
-# # summary(rcclpm_fit, standardized=T)
+# # summary(rcclpm_fit, std=T, ci = T)
 # 
 # # 3. RI-GCLM
 # rigclm_syntax = RC_GCLM_syntax(model = 'regclm',
@@ -134,36 +134,35 @@ gc()
 # )
 # beepr::beep()
 # fm_rigclm_fit = fitmeasures(rigclm_fit, measures)
-# #summary(rigclm_fit, standardized=T)
+# #summary(rigclm_fit, std=T, ci = T)
 # gc()
 
 
 # 4. RC-GCLM
-rcgclm_syntax = RC_GCLM_syntax(model = 'regclm')
+rcgclm_syntax = RC_GCLM_syntax(model = 'regclm',
+                               cor = T)
 rcgclm_fit = sem(rcgclm_syntax,
                  data = df_lv, 
                  estimator = "mlr",
                  orthogonal = T, 
-                 cluster = 'LAD21CD'
-)
+                 cluster = 'LAD21CD')
 beepr::beep()
-#summary(rcgclm_fit, standardized=T)
+#summary(rcgclm_fit, std=T, ci = T)
 fm_rcgclm_fit = fitmeasures(rcgclm_fit, measures)
 gc()
 
 # 5. Health only
 rcgclm_syntax_h = RC_GCLM_syntax(model = 'regclm',
-                                 endogeneous = c('HE', 'as', 'cs', 'hc')
-                                 )
+                                 endogeneous = c('HE', 'as', 'cs', 'hc'),
+                                 cor = T)
 rcgclm_fit_h = sem(rcgclm_syntax_h,
                    data = df_lv, 
                    estimator = "mlr",
                    orthogonal = T, 
-                   cluster = 'LAD21CD'
-)
+                   cluster = 'LAD21CD')
 beepr::beep()
 fm_rcgclm_fit_h = fitmeasures(rcgclm_fit_h, measures)
-#summary(rcgclm_fit_h, standardized=T)
+#summary(rcgclm_fit_h, std=T, ci = T)
 gc()
 
 # ---------------------------------------------------------------------
@@ -202,7 +201,7 @@ rcgclm_L_fit = sem(rcgclm_syntax_noLondon,
                    cluster = 'LAD21CD'
 )
 beepr::beep()
-#summary(rcgclm_L_fit, standardized=T)
+#summary(rcgclm_L_fit, std=T, ci = T)
 fm_rcgclm_L_fit = fitmeasures(rcgclm_L_fit, measures)
 gc()
 
@@ -245,7 +244,7 @@ rcgclm_outliers_3_fit = sem(rcgclm_syntax,
                  cluster = 'LAD21CD'
 )
 beepr::beep()
-#summary(rcgclm_outliers_3_fit, standardized=T)
+#summary(rcgclm_outliers_3_fit, std=T, ci = T)
 fm_rcgclm_outliers_3_fit = fitmeasures(rcgclm_outliers_3_fit, measures)
 gc()
 
@@ -280,7 +279,7 @@ rcgclm_outliers_1.5_fit = sem(rcgclm_syntax_noLondon,
                             cluster = 'LAD21CD'
 )
 beepr::beep()
-#summary(rcgclm_outliers_1.5_fit, standardized=T)
+#summary(rcgclm_outliers_1.5_fit, std=T, ci = T)
 fm_rcgclm_outliers_1.5_fit = fitmeasures(rcgclm_outliers_1.5_fit, measures)
 gc()
 
@@ -300,7 +299,7 @@ mental_sub1_fit = sem(mental_sub_syntax,
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
-#summary(mental_sub1_fit, standardized=T)
+#summary(mental_sub1_fit, std=T, ci = T)
 fm_sub1_fit = fitmeasures(mental_sub1_fit, measures)
 gc()
 
@@ -313,7 +312,7 @@ mental_sub2_fit = sem(mental_sub_syntax,
                       orthogonal = T, 
                       cluster = 'LAD21CD'
 )
-#summary(mental_sub2_fit, standardized=T)
+#summary(mental_sub2_fit, std=T, ci = T)
 fm_sub2_fit = fitmeasures(mental_sub2_fit, measures)
 gc()
 
@@ -328,7 +327,7 @@ mental_sub3_fit = sem(mental_sub_syntax,
                       cluster = 'LAD21CD'
 )
 fm_sub3_fit = fitmeasures(mental_sub3_fit, measures)
-#summary(mental_sub3_fit, standardized=T)
+#summary(mental_sub3_fit, std=T, ci = T)
 gc()
 
 # 4. Hospital admissions (z-scores)
@@ -342,7 +341,7 @@ mental_sub4_fit = sem(mental_sub_syntax,
                       cluster = 'LAD21CD'
 )
 beepr::beep()
-#summary(mental_sub4_fit, standardized=T)
+#summary(mental_sub4_fit, std=T, ci = T)
 fm_sub4_fit = fitmeasures(mental_sub4_fit, measures)
 gc()
 
@@ -408,14 +407,27 @@ effects_all = CoefsExtract(models = c('only_growth_fit',
                         paste0('s', endogeneous)))
 
 # keeping covariances only
-d_growth_cov = effects_all %>% filter(type == 'e_growth_cov') %>% 
-  dplyr:: select(id, ends_with('long'))
-d_growth_cov = d_growth_cov[,c('id', 'est.std.x.x_long')]
+i_cor = effects_all %>% filter(type == 'i_cor' & nchar(id) > 6)
+i_cor = i_cor[,c('id', 'est.std.x.x_long')]
+i_cor = i_cor %>% tidyr::separate('id', c('X', 'Y'), sep =':=')
 
-# applying the function
-growthcor = MatrixEffects(dat = d_growth_cov,
-                                cor_name = 'id',
-                                pars = 'est.std.x.x_long') 
+# creating a cor matrix
+growth = c(paste0('i', endogeneous), 
+           paste0('s', endogeneous))
+growthcor = as.data.frame(matrix(nrow = length(growth),
+                                 ncol = length(growth),
+       dimnames = list(growth, growth)))
+for (row in growth){
+  for (col in growth){
+    if (any(i_cor$X == row & i_cor$Y == col)){
+      growthcor[row, col] = i_cor[i_cor$X == row & i_cor$Y == col, 
+                                'est.std.x.x_long']
+    }
+    
+  }
+}
+growthcor[lower.tri(growthcor, diag = F)] <- ''
+growthcor[is.na(growthcor)] = '1.000'
 
 # col and row names
 all_nam = c('Intercept Mental Health',
@@ -460,44 +472,21 @@ end_new = c('Mental Health',
 
 # extracting impulses
 
-d_impulse_cov = effects_all %>% filter(type == 'd_impulse_cov') %>% 
+d_impulse_cov = effects_all %>% filter(type == 'i_cor' & nchar(id) == 6) %>% 
   dplyr:: select(id, ends_with('long'))
-d_impulse_cov$id = sub('e_', '', d_impulse_cov$id)
+d_impulse_cov = d_impulse_cov %>% tidyr::separate('id', c('X', 'Y'), sep =':=')
 
 pars_vec = c("est.std.x_long",
              "est.std.y_long",
              "est.std.x.x_long",
              "est.std.y.y_long")
 
-# extracting correlations (the warning is ok)
-
-lst_implulse_cov = list()
-for (i in seq_along(pars_vec)){
-  
-  lst_implulse_cov[[i]] =  MatrixEffects(dat = d_impulse_cov,
-                                         cor_name = 'id',
-                                         pars = pars_vec[i],
-                                         cor = T,
-                                         colnames = endogeneous,
-                                         rownames = endogeneous)
-  mat = lst_implulse_cov[[i]]
-  tri = upper.tri(mat, diag = T)
-  lst_implulse_cov[[i]] = as.data.frame(cbind(rownames(mat)[row(mat)[tri]],
-                                              colnames(mat)[col(mat)[tri]],
-                                              as.vector(mat[tri])))
-  colnames(lst_implulse_cov[[i]]) = c('id1', 'id2', 'impulse_cov')
-}
-# Warning message:
-#   In cov2cor(as.matrix(pivot)) :
-#   diag(.) had 0 or NA entries; non-finite result is doubtful
-
 # cleaning the table
 
-impulse_cor = lst_implulse_cov %>% 
-  reduce(full_join, by = c('id1', 'id2'))
-col = c('id1', 'id2')
+impulse_cor = d_impulse_cov
+col = c('X', 'Y')
 impulse_cor[, col] = apply(impulse_cor[, col], 2, function(x) end_new[match(x, endogeneous)])
-impulse_cor = impulse_cor[order(match(impulse_cor$id1, end_new)), ]
+impulse_cor = impulse_cor[order(match(impulse_cor$X, end_new)), ]
 impulse_cor[impulse_cor == 'NA'] = ''
 colnames(impulse_cor) = c('', '', 'Model 1.1', 'Model 1.2', 'Model 1.3', 'Model 1.4')
 impulse_cor = CiSplit(impulse_cor)
@@ -550,7 +539,11 @@ TableEffects = function(dat = effects_all,
                "~fr|fr~#")
 
   dat = dat %>%
-    filter(!type %in% c('d_impulse_cov', 'e_growth_cov', 'g_other_policies', 'h_controls')) %>%
+    filter(!type %in% c('d_impulse_cov',
+                        'e_growth_cov',
+                        'g_other_policies',
+                        'h_controls',
+                        'i_cor')) %>%
     mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
                                                         .end_new[match(y, patterns)], x), 
                        .init = id)) %>%

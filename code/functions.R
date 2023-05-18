@@ -5,10 +5,6 @@ normalize = function(x, na.rm = T){
   return((x - min(x)) /(max(x)- min(x)))
 }
 
-normalize_reverse = function(x, na.rm = T){
-  return((x - min(x)) /(max(x)- min(x)))
-}
-
 policy_names_6 = c('social_care_adult',
                    'social_care_children',
                    'healthcare',
@@ -122,17 +118,15 @@ nm_out = c('SAMHI',
 
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
               'sen ', 'slo ', 'sfr ',
-              '~~ sHE', '~~ sas', '~~ scs', '~~ shc',
-              '~~ sen', '~~ slo', '~~ sfr')
+              '\\*sHE', '\\*sas', '\\*scs', '\\*shc',
+              '\\*sen', '\\*slo', '\\*sfr')
 
 # Random Effects GCLM lavaan syntax
 
 RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
-                                          'en', 'lo', 'fr'
-                                          ),
+                                          'en', 'lo', 'fr'),
                           reverse = c('as', 'cs', 'hc', 'ph',
-                                      'en', 'lo', 'fr'
-                                      ),
+                                      'en', 'lo', 'fr'),
                           full = T,
                           no_slopes = NULL,
                           control = control_names,
@@ -145,6 +139,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                           stationary = T,
                           group_equality = NULL,
                           restricted_pars = NULL,
+                          cor = F,
                           model = 'regclm'){
   require(dplyr)
   n_var = length(endogeneous)
@@ -158,9 +153,9 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                 glue("s{.x} =~ ", .)) %>%
     glue_collapse("\n")
   
-  Intercept_Var = map(endogeneous, ~  glue("i{.x} ~~ i{.x}")) %>%
+  Intercept_Var = map(endogeneous, ~  glue("i{.x} ~~ var_i{.x}*i{.x}")) %>%
     glue_collapse("\n")
-  Slope_Var = map(endogeneous, ~  glue("s{.x} ~~ s{.x}")) %>%
+  Slope_Var = map(endogeneous, ~  glue("s{.x} ~~ var_s{.x}*s{.x}")) %>%
     glue_collapse("\n")
   Intercept_Mean = map(endogeneous, ~  glue("i{.x} ~ 1")) %>%
     glue_collapse("\n")
@@ -178,43 +173,67 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
     glue_collapse("\n")
   
   
-  Intercept_Slope_Cov = map(endogeneous, ~  glue("i{.x} ~~ s{.x}")) %>%
-    glue_collapse("\n")
-  Slope_Intercept_Cov = map(endogeneous, ~  glue("s{.x} ~~ i{.x}")) %>%
-    glue_collapse("\n")
+  # Intercept_Slope_Cov = map(endogeneous, ~  glue("i{.x} ~~ covar_i{.x}.s{.x}*s{.x}")) %>%
+  #   glue_collapse("\n")
+  # Slope_Intercept_Cov = map(endogeneous, ~  glue("s{.x} ~~ covar_s{.x}.i{.x}*i{.x}")) %>%
+  #   glue_collapse("\n")
   
 # covar
 
+  # if(n_var > 1){
+  #   iscov = expand_grid(x = endogeneous,
+  #                        y = endogeneous) %>%
+  #     filter(!x == y) %>%
+  #     mutate(n = rep(1:(n_var-1), n_var)) %>%
+  #     mutate(seq = rep(0:(n_var-1), each = n_var-1)) %>%
+  #     filter(!seq >= n) %>%
+  #     dplyr::select(x, y) %>%
+  #     dplyr::mutate(cov_ii = glue('i{x} ~~ covar_i{x}.i{y}*i{y}'),
+  #                 cov_ss = glue('s{x} ~~ covar_s{x}.s{y}*s{y}'),
+  #                 cov_is = glue('i{x} ~~ covar_i{x}.s{y}*s{y}'),
+  #                 cov_si = glue('s{x} ~~ covar_s{x}.i{y}*i{y}'))
+  # Cov_ii = iscov %>%
+  #   pull(cov_ii) %>%
+  #   glue_collapse("\n")
+  # Cov_ss = iscov %>%
+  #   pull(cov_ss) %>%
+  #   glue_collapse("\n")
+  # Cov_is = iscov %>%
+  #   pull(cov_is) %>%
+  #   glue_collapse("\n")
+  # Cov_si = iscov %>%
+  #   pull(cov_si) %>%
+  #   glue_collapse("\n")
+  # } else {
+  #   Cov_ss = ''
+  #   Cov_ii = ''
+  #   Cov_is = ''
+  #   Cov_si = ''
+  # }
+  # 
+  
+  # covar
+  
   if(n_var > 1){
-    iscov = expand_grid(x = endogeneous,
-                         y = endogeneous) %>%
+    rand_all = c(paste0('i', endogeneous), paste0('s', endogeneous))
+    n_rand = 2*n_var
+    rand = expand_grid(x = rand_all,
+                       y = rand_all) %>%
       filter(!x == y) %>%
-      mutate(n = rep(1:(n_var-1), n_var)) %>%
-      mutate(seq = rep(0:(n_var-1), each = n_var-1)) %>%
-      filter(!seq >= n) %>%
-      dplyr::select(x, y) %>%
-      dplyr::mutate(cov_ii = glue('i{x} ~~ i{y}'),
-                  cov_ss = glue('s{x} ~~ s{y}'),
-                  cov_is = glue('i{x} ~~ s{y}'),
-                  cov_si = glue('s{x} ~~ i{y}'))
-  Cov_ii = iscov %>%
-    pull(cov_ii) %>%
-    glue_collapse("\n")
-  Cov_ss = iscov %>%
-    pull(cov_ss) %>%
-    glue_collapse("\n")
-  Cov_is = iscov %>%
-    pull(cov_is) %>%
-    glue_collapse("\n")
-  Cov_si = iscov %>%
-    pull(cov_si) %>%
-    glue_collapse("\n")
+      mutate(n = rep(1:(n_rand-1), n_rand)) %>%
+      mutate(seq = rep(0:(n_rand-1), each = n_rand-1)) %>%
+      filter(!seq>=n) %>%
+      dplyr::select(x,y) 
+    
+    Cov_Rand = rand %>%
+      dplyr::mutate(cov_is = glue('{x} ~~ covar_{x}.{y}*{y}')) %>%
+      pull(cov_is) %>%
+      glue_collapse("\n")
   } else {
-    Cov_ss = ''
-    Cov_ii = ''
-    Cov_is = ''
-    Cov_si = ''
+    Cov_Rand = ''
   }
+  
+  
   
   Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} =~ 1*{.x}{1:max_time}")%>%
                 glue_collapse("\n")) %>%
@@ -415,6 +434,23 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
 
     }
   }
+  
+  # all covariances to correlations
+  
+  if (cor == T){
+    Cor_Resid = ecov %>%
+      dplyr::mutate(g = glue("ecor_{x}.{y} := ecov_{x}{y} / (sqrt(evar{x}) * sqrt(evar{y}))"))%>%
+      pull(g)%>%
+      glue_collapse("\n")
+    
+    Cor_Rand = rand %>%
+      dplyr::mutate(g = glue("cor_{x}.{y} := covar_{x}.{y} / (sqrt(var_{x}) * sqrt(var_{y}))"))%>%
+      pull(g)%>%
+      glue_collapse("\n")
+  } else{
+    Cor_Resid = ''
+    Cor_Rand = ''
+  }
 
 # Controls
   if (!is.null(control)){
@@ -577,12 +613,9 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                        
                        # Covariance between growth factors
                        
-                       {Intercept_Slope_Cov}
-                        
-                       {Cov_ii}
-                       {Cov_ss}
-                       {Cov_is}
-                       {Cov_si}
+                    
+                       
+                       {Cov_Rand}
                        
                        # Impulses: deviations from growth trajectories                       
                        
@@ -602,7 +635,15 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
                        
                        # Control variables
                        
-                       {Control}
+                        {Control}
+                       
+                       # Correlations between residuals
+                       
+                       {Cor_Resid}
+                         
+                       # Correlations between random effects
+                         
+                       {Cor_Rand}
                        
                        #
                        
@@ -901,8 +942,13 @@ CoefsExtract = function(models = NULL,
 
     } else{
       # main effects - unstandardized
-      stdsol = broom::tidy(eval(parse(text = model))) %>% 
-        separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
+      stdsol = broom::tidy(eval(parse(text = model))) 
+      stdsol$term = ifelse(grepl('ecor_|cor_',  stdsol$label),
+             str_replace_all(stdsol$label, c('ecor_'='',
+                                             'cor_'='')),  stdsol$term)
+      
+      stdsol = stdsol %>% 
+        separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ |\\.") %>%
         rename(est.std = std.all, se = std.error, pvalue = p.value)
       
       stdsol_main = stdsol %>%
@@ -920,8 +966,13 @@ CoefsExtract = function(models = NULL,
     }
     
     # covariance - unstandardized always (to make correlations)
-    stdsol_cov = broom::tidy(eval(parse(text = model))) %>% 
-      separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ ") %>%
+    stdsol_cov = broom::tidy(eval(parse(text = model))) 
+    stdsol_cov$term = ifelse(grepl('ecor_|cor_',  stdsol_cov$label),
+                         str_replace_all(stdsol_cov$label, c('ecor_'='',
+                                                         'cor_'='')),  stdsol_cov$term)
+    
+    stdsol_cov = stdsol_cov %>% 
+      separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ |\\.") %>%
       rename(est.std = std.all, se = std.error, pvalue = p.value)
     
     stdsol_cov = stdsol_cov %>%
@@ -929,7 +980,8 @@ CoefsExtract = function(models = NULL,
       rename(est.std = estimate) %>%
       filter(
           op == "~~" & lhs %in% growth & rhs %in% growth|
-          op == "~~" & rhs %in% impulses & lhs %in% impulses #& !rhs==lhs
+          op == "~~" & rhs %in% impulses & lhs %in% impulses|
+          op == ":="
       ) %>%
       dplyr::select(all_of(intersect(colnames(stdsol_cov), colnm))) %>%
       mutate(id = str_c(lhs, op, rhs)) %>%
@@ -954,8 +1006,7 @@ CoefsExtract = function(models = NULL,
   
   coefs_long <- m_out %>% 
     reduce(full_join, by = 'id') %>% 
-    select(id, everything()) %>% 
-    mutate_if(is.numeric, ~ round(., 3))
+    select(id, everything())
   
   fun <- function(x){
     case_when(
@@ -993,6 +1044,7 @@ CoefsExtract = function(models = NULL,
     
     coefs_long[, type := case_when(
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
+      grepl(':=', id) ~ 'i_cor',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
       id %in% growth_variants ~ 'e_growth_cov',
       id %in% impulse_variants ~ 'd_impulse_cov',
@@ -1005,6 +1057,7 @@ CoefsExtract = function(models = NULL,
   } else {
     coefs_long[, type := case_when(
       id %in% c(paste0(end_, '~', end_), paste0(end_, '~', impulses_)) ~ 'a_auto',
+      grepl(':=', id) ~ 'i_cor',
       substr(id, 1, 2) == substr(health, 1, 2) ~ 'c_policy',
       id %in% impulse_variants ~ 'd_impulse_cov',
       substr(id, 6, 7) == substr(health, 1, 2) ~ 'b_health',
@@ -1019,6 +1072,7 @@ CoefsExtract = function(models = NULL,
     mutate(
       long_or_short = ifelse(grepl('e_', id) & !grepl('~~', id), 'short', 'long'),
       num = case_when(
+        grepl(':=', id) ~ 10,
         grepl('as', substr(id, 1, 2)) ~ 2,
         grepl('cs', substr(id, 1, 2)) ~ 3,
         grepl('hc', substr(id, 1, 2)) ~ 4,
@@ -1143,52 +1197,59 @@ MatrixEffects = function(dat,
                                       paste0('s', endogeneous)),
                          cor = T,
                          sep = '~~'){
+  
   sgn = dat
   sgn %<>% tidyr::separate(cor_name, c('X', 'Y'), sep)
+  cov_mat = function(dat){
+      pivot_initial = dat %>%
+        group_by(Y, X) %>%
+        summarize(across(all_of(pars), identity), .groups = 'drop') %>%
+        pivot_wider(names_from = X, values_from = all_of(pars)) %>%
+        column_to_rownames(var = "Y")
+      pivot = pivot_initial[rownames, colnames]
+      
+      return(pivot)
+  }
   
   # Select columns and separate the cor_name column into X and Y columns using '~~' as the separator
   dat = dat %>%
     select(all_of(cor_name), all_of(pars)) %>%
     separate(cor_name, c('X', 'Y'), sep)
-  if (cor == T){
-    dat = dat %>%
-      mutate_at(vars(all_of(pars)), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
-    }
+  
   # Calculate the covariance matrix
-  pivot_initial = dat %>%
-    group_by(Y, X) %>%
-    summarize(across(all_of(pars), identity), .groups = 'drop') %>%
-    pivot_wider(names_from = X, values_from = all_of(pars)) %>%
-    column_to_rownames(var = "Y")
+    pivot = cov_mat(dat)
   
-  pivot = pivot_initial[rownames, colnames]
-  
-  if (cor == F){
-    # # Add additional information to the lower triangle of the matrix
-    # #pivot[] = lapply(pivot, sprintf, fmt = "%.2f")
-    # 
-    # for (i in seq_along(rownames(pivot))){
-    #   for (j in seq_along(colnames(pivot))){
-    #    
-    #       # Combine the correlation value with the additional information from the dat table
-    #       pivot[i, j] = paste0(pivot[i, j], str_replace_all(
-    #         sgn %>% filter(Y == rownames(pivot)[i], X == colnames(pivot)[j]) %>% pull(all_of(pars)),
-    #         #c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')
-    #         c("[:digit:]|-|\\." = '', '\\[.*\\]' = ''))
-    #         )
-    #     
-    #   }
-    # }
+  if (cor == T){
+    dat1 = dat %>%
+      mutate_at(vars(all_of(pars)), ~ as.numeric(str_replace_all(., '\\*\\**\\**|\\^|\\[.*\\]', '')))
+    dat2 = dat %>%
+      mutate_at(vars(all_of(pars)), ~ as.numeric(str_replace_all(., ".*?\\[([-0-9.]+).*", "\\1")))
+    dat3 = dat %>%
+      mutate_at(vars(all_of(pars)), ~ as.numeric(str_replace_all(., ".*?\\[[-0-9.]+; ([-0-9.]+)\\].*", "\\1")))
     
-    
-    
-  } else{
-    pivot = t(pivot)
-    # Convert covariance matrix to correlation matrix and remove values in lower triangle
-    pivot = as.data.frame(cov2cor(as.matrix(pivot)))
-    dimnames(pivot) = list(colnames(pivot), colnames(pivot))
-    pivot[] = lapply(pivot, sprintf, fmt = "%.3f")
-    pivot[lower.tri(pivot, diag = F)] <- ''
+    # Calculate the covariance matrix
+    cov_mat_cor = function(dat){
+      pivot_initial = dat %>%
+        group_by(Y, X) %>%
+        summarize(across(all_of(pars), identity), .groups = 'drop') %>%
+        pivot_wider(names_from = X, values_from = all_of(pars)) %>%
+        column_to_rownames(var = "Y")
+      
+      pivot = pivot_initial[rownames, colnames]
+      pivot = t(pivot)
+      
+      # Convert covariance matrix to correlation matrix and remove values in lower triangle
+      pivot = as.data.frame(cov2cor(as.matrix(pivot)))
+      dimnames(pivot) = list(colnames(pivot), colnames(pivot))
+      pivot[] = lapply(pivot, sprintf, fmt = "%.3f")
+      pivot[lower.tri(pivot, diag = F)] <- ''
+      
+      return(pivot)
+    }
+       
+    pivot = cov_mat_cor(dat1) 
+    pivot2 = cov_mat_cor(dat2)
+    pivot3 = cov_mat_cor(dat3)
     
     # Add additional information to the lower triangle of the matrix
     
@@ -1198,14 +1259,16 @@ MatrixEffects = function(dat,
           # Combine the correlation value with the additional information from the dat table
           pivot[i, j] = paste0(pivot[i, j], str_replace_all(
             sgn %>% filter(X == colnames(pivot)[i], Y == colnames(pivot)[j]) %>% pull(all_of(pars)),
-            #c("[:digit:]|-|\\." = '', '\\[.*\\]' = '')
-            c("^-?\\d+\\.?\\d*" = ''
-              )))
+            c("[^*^]+" = ''
+              )), ' [', pivot2[i, j],'; ', pivot3[i, j], ']'
+            )
         }
       }
     }
-  }
+    
+    pivot[pivot == ' [; ]'] <- ''
   
+  }
   return(pivot)
 }
 
