@@ -613,12 +613,13 @@ sensitivity_models_coefs[10:15,1] = end_new[2:7]
 # # ----------------------------------------------------------------------
 
 # 5. Main model - effects of spendings on each other
-
-other_policies = effects_all %>% filter(type %in% c('g_other_policies',
+effects_main_std = CoefsExtract('rcgclm_fit',
+                                standardized = T)
+other_policies = effects_main_std %>% filter(type %in% c('g_other_policies',
                                                       'a_auto') &
                                             !grepl('HE', id))
-other_policies_long = other_policies[,c('id', 'est.std.x.x_long')]
-other_policies_short = other_policies[,c('id', 'est.std.x.x_short')]
+other_policies_long = other_policies[,c('id', 'est.std_long')]
+other_policies_short = other_policies[,c('id', 'est.std_short')]
 #other_policies$est.std.x.x_long = gsub("\\[.*?\\]", '', other_policies$est.std.x.x_long)
 
 # applying the function
@@ -626,14 +627,14 @@ other_policies_matrix_long = MatrixEffects(dat = other_policies_long,
                                 cor_name = 'id',
                                 colnames = endogeneous[-1],
                                 rownames = endogeneous[-1],
-                                pars = 'est.std.x.x_long',
+                                pars = 'est.std_long',
                                 cor = F,
                                 sep = '~') 
 other_policies_matrix_short = MatrixEffects(dat = other_policies_short,
                                            cor_name = 'id',
                                            colnames = endogeneous[-1],
                                            rownames = endogeneous[-1],
-                                           pars = 'est.std.x.x_short',
+                                           pars = 'est.std_short',
                                            cor = F,
                                            sep = '~') 
 dimnames(other_policies_matrix_long) = list(nm_out[6:11], nm_out[6:11])
