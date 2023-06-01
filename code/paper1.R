@@ -9,7 +9,6 @@ library(IMD)
 library(glue)
 library(tidyverse)
 library(lavaan)
-library(semTable)
 library(data.table)
 library(tidyr)
 library(broom)
@@ -34,11 +33,11 @@ for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
 
 # scale for controls
 for (i in control_names[!control_names %in% c('public_health_mean',
-                                      'inc_mean',
-                                      'rural',
-                                      'London',
-                                      'SD',
-                                      'MD')]){
+                                              'inc_mean',
+                                              'rural',
+                                              'London',
+                                              'SD',
+                                              'MD')]){
   df[, i] = scale(df[, i])
 }
 
@@ -58,7 +57,7 @@ df = df %>%
 
 # final dataset - wide format
 df_lv = lavaan_df(dv = 'samhi_index',
-                             df = df)
+                  df = df)
 df_lv = as.data.frame(na.omit(df_lv))
 summary(df_lv)
 
@@ -78,6 +77,10 @@ summary(df_lv)
 # hist(df$law_order, breaks = 30)
 # hist(df$infrastructure, breaks = 30)
 # hist(df$public_health, breaks = 30)
+
+# Lsum = df_before_scaling %>% group_by(London) %>%
+#   summarise(n = mean(law_order))
+# Lsum$n[2]/Lsum$n[1]
 
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
@@ -102,7 +105,7 @@ gc()
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
                                no_slopes = no_slopes,
-                               cor = T)
+                               cor = T, resid_stationary = F)
 riclpm_fit = sem(riclpm_syntax,
                  data = df_lv,
                  estimator = "mlr",
@@ -150,6 +153,9 @@ beepr::beep()
 #summary(rcgclm_fit, std=T, ci = T)
 fm_rcgclm_fit = fitmeasures(rcgclm_fit, measures)
 gc()
+
+anova(riclpm_fit, rcgclm_fit)
+anova(only_growth_fit, rcgclm_fit)
 
 # 5. Health only
 rcgclm_syntax_h = RC_GCLM_syntax(model = 'regclm',
@@ -890,7 +896,19 @@ panel_df = df_before_scaling %>%
 panel = panel_data(panel_df, id = LAD21CD, wave = year)
 
 list_plots = list()
-for (i in 1:length(all_vars)){
+for (i in 1:5){
+  list_plots[[i]] = panel  %>% 
+    ggplot(aes(year, !!sym(all_vars[i]))) +
+    scale_x_continuous(name = NULL, 
+                       breaks = 2013:2019)+ 
+    scale_y_continuous(name = NULL, limits = c(-3.5, 3))  +
+    geom_line(aes(group = LAD21CD), color = "lightblue") +
+    geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
+    theme_pubclean() + 
+    theme(axis.text = element_text(size = 24)) + 
+    theme(axis.title.x = element_text(size = 24))
+}
+for (i in 6:length(all_vars)){
   list_plots[[i]] = panel  %>% 
     ggplot(aes(year, !!sym(all_vars[i]))) +
     scale_x_continuous(name = NULL, 

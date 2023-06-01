@@ -11,7 +11,7 @@ policy_names_6 = c('social_care_adult',
                    'env',
                    'law_order',
                    'infrastructure'#,
-                  # 'public_health'
+                   #'public_health'
                    )
 
 control_names = c('public_health_mean',
@@ -123,9 +123,9 @@ no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
 
 # Random Effects GCLM lavaan syntax
 
-RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
+RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
                                           'en', 'lo', 'fr'),
-                          reverse = c('as', 'cs', 'hc', 'ph',
+                          reverse = c('as', 'cs', 'hc',# 'ph',
                                       'en', 'lo', 'fr'),
                           full = T,
                           no_slopes = NULL,
