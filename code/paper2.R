@@ -13,6 +13,8 @@ library(semTable)
 library(viridis)
 library(ggplot2)
 library(data.table)
+library(tictoc)
+library(doParallel)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
 options(max.print=3400)
@@ -22,60 +24,55 @@ options(max.print=3400)
 # loading the data
 df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
 
-## deprivation 
-
 # LAD deprivation groups
-df %<>% group_by(LAD21CD) %>%
-  #dplyr::mutate(lad_ses_score = mean(lsoa_ses_score)) %>%
-  ungroup() %>%
-  dplyr::mutate(lsoa_dep = ifelse(lsoa_ses_score < quantile(lsoa_ses_score, probs = 0.5)[[1]], 1,
-                                 ifelse(lsoa_ses_score >= quantile(lsoa_ses_score, probs = 0.5)[[1]], 2, 0)))
+df %<>% dplyr::mutate(lsoa_dep = ifelse(lsoa_ses_score < quantile(lsoa_ses_score, probs = 0.5)[[1]], 1,
+                                        ifelse(lsoa_ses_score >= quantile(lsoa_ses_score, probs = 0.5)[[1]], 2, 0)))
 table(df$lsoa_dep)
 df = df %>% filter(lsoa_dep > 0)
 
-# a dataset for descriptives
+# a dataset for descriptive stat
 df_before_scaling = df
-df_before_scaling$z_mh_rate = -df_before_scaling$z_mh_rate
-df_before_scaling$antidep_rate = -df_before_scaling$antidep_rate
-df_before_scaling$est_qof_dep = -df_before_scaling$est_qof_dep
-df_before_scaling$prop_ibesa = -df_before_scaling$prop_ibesa
-df_before_scaling$samhi_index = -df_before_scaling$samhi_index
+df_before_scaling %<>%
+  mutate_at(vars(all_of(health_vars)), ~ -.)
 
-# normalising from 0 to 10 to facilitate the convergence of SEM models
-for (i in c(policy_names_6,
-            health_vars,
-            control_names[-length(control_names)]
-            
-)){
-  df[, i] = normalize(df[, i])*10
+# Z-scores for health
+for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+  df[, i] = scale(df[, i])
 }
 
-# Flipping the sign
-df$z_mh_rate = -df$z_mh_rate
-df$antidep_rate = -df$antidep_rate
-df$est_qof_dep = -df$est_qof_dep
-df$prop_ibesa = -df$prop_ibesa
-df$samhi_index = -df$samhi_index
+# scale for controls
+for (i in control_names[!control_names %in% c('public_health_mean',
+                                              'inc_mean',
+                                              'rural',
+                                              'London',
+                                              'SD',
+                                              'MD',
+                                              'lsoa_ses_score')]){
+  df[, i] = scale(df[, i])
+}
 
-#par(mfrow=c(2,2))
-# quick dist 
-hist(df$antidep_rate[df$lsoa_dep==1], breaks = 30)
-hist(df$health, breaks = 30)
-hist(df$healthcare[df$lsoa_dep==1], breaks = 30)
-hist(df$env[df$lsoa_dep==1], breaks = 30)
-hist(df$education[df$lsoa_dep==1], breaks = 30)
-hist(df$law_order[df$lsoa_dep==1], breaks = 30)
-hist(df$infrastructure[df$lsoa_dep==1], breaks = 30)
-hist(df$samhi_index, breaks = 30)
-hist(df$antidep_rate, breaks = 30)
+# a dataframe for the sensitivity analysis
+df_for_outliers = df
+
+# normalize and log for spending
+for (i in c(policy_names_6,
+            control_names[control_names %in% c('public_health_mean',
+                                               'inc_mean')])){
+  df[, i] = scale(log(df[, i]))
+}
+
+# flip the sign
+df = df %>%
+  mutate_at(vars(all_of(health_vars)), ~ -.)
+
+
 
 # final dataset - wide format
-df_lavaan_mental = lavaan_df(dv = 'samhi_index',
-                             df = df,
-                             max_time = 7, 
-                             deprivation_cat = 'lsoa_dep')
-df_lavaan_mental = as.data.frame(na.omit(df_lavaan_mental))
-summary(df_lavaan_mental)
+df_lv = lavaan_df(dv = 'samhi_index',
+                  deprivation_cat = 'lsoa_dep',
+                  df = df)
+df_lv = as.data.frame(na.omit(df_lv))
+summary(df_lv)
 
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
@@ -85,129 +82,91 @@ summary(df_lavaan_mental)
 
 # a. free model
 group_free_syntax = RC_GCLM_syntax(multiple = T,
-                                   control = control_names[-1])
+                                   control = control_names[-3])
 group_free_fit = sem(group_free_syntax,
-                            data = df_lavaan_mental, 
+                            data = df_lv, 
                             estimator = "mlr",
                             orthogonal = T, 
                             cluster = 'LAD21CD',
                             group = 'lsoa_dep'
 )
 beepr::beep()
-#summary(group_free_fit, fit.measures=T, standardized=T)
 gc()
 fm_group_free = fitmeasures(group_free_fit, measures)
-group_free_std = standardizedSolution(group_free_fit)
+group_free_std = broom::tidy(group_free_fit)
 
-# b. fixed for social care/public health
-group_SCfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1],
-                                      group_equality = 'b_HEhe1,b_HEhe2')
-group_SCfixed_fit = sem(group_SCfixed_syntax,
-                               data = df_lavaan_mental, 
-                               estimator = "mlr",
-                               orthogonal = T, 
-                               cluster = 'LAD21CD',
-                               group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_SCfixed_fit, fit.measures=T, standardized=T)
-gc()
 
-# compare
-anova_SC = as.data.frame(anova(group_SCfixed_fit, group_free_fit))
+# running constrained models
 
-# c. fixed for healthcare
-group_HCfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1] ,
-                                      group_equality = 'b_HEhc1,b_HEhc2')
-group_HCfixed_fit = sem(group_HCfixed_syntax,
-                               data = df_lavaan_mental, 
-                               estimator = "mlr",
-                               orthogonal = T, 
-                               cluster = 'LAD21CD',
-                               group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_HCfixed_fit, fit.measures=T, standardized=T)
-gc()
+equality_params = c('b_HEhc1,b_HEhc2',
+                    'b_HEas1,b_HEas2',
+                    'b_HEcs1,b_HEcs2',
+                    'b_HElo1,b_HElo2',
+                    'b_HEen1,b_HEen2',
+                    'b_HEfr1,b_HEfr2',
+                    
+                    'd_HEhc1,d_HEhc2',
+                    'd_HEas1,d_HEas2',
+                    'd_HEcs1,d_HEcs2',
+                    'd_HElo1,d_HElo2',
+                    'd_HEen1,d_HEen2',
+                    'd_HEfr1,d_HEfr2')
 
-# compare
-anova_HC = as.data.frame(anova(group_HCfixed_fit, group_free_fit))
+syntax = list()
+for (i in seq_along(equality_params)){
+  syntax[[i]] = RC_GCLM_syntax(multiple = T,
+                               control = control_names[-3],
+                               group_equality = equality_params[i])
+  
+}
 
-# d. fixed for education
-group_EDfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1] ,
-                                      group_equality = 'b_HEed1,b_HEed2')
-group_EDfixed_fit = sem(group_EDfixed_syntax,
-                        data = df_lavaan_mental, 
-                        estimator = "mlr",
-                        orthogonal = T, 
-                        cluster = 'LAD21CD',
-                        group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_EDfixed_fit, fit.measures=T, standardized=T)
-gc()
+lsoa_group = c('lsoa_dep', 'lsoa_dep')
 
-# compare
-# non-significant
-anova_ED = as.data.frame(anova(group_EDfixed_fit, group_free_fit))
 
-# e. fixed for environment
-group_ENfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1],
-                                      group_equality = 'b_HEen1,b_HEen2')
-group_ENfixed_fit = sem(group_ENfixed_syntax,
-                        data = df_lavaan_mental, 
-                        estimator = "mlr",
-                        orthogonal = T, 
-                        cluster = 'LAD21CD',
-                        group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_ENfixed_fit, fit.measures=T, standardized=T)
+groupSEM = function(synt, lsoa){
+  list_result = list()
+  list_result[[1]] = sem(synt,
+                         data = df_lv, 
+                         estimator = "mlr",
+                         orthogonal = T, 
+                         cluster = 'LAD21CD',
+                         group = lsoa)
+  gc()
+  
+  list_result[[2]] = as.data.frame(anova(list_result[[1]], group_free_fit))
+  
+  return(list_result)
+  
+}
 
-gc()
+# running
+#syntax = syntax[c(3,4)]
 
-# compare
-anova_EN = as.data.frame(anova(group_ENfixed_fit, group_free_fit))
+list_results_sens = list()
 
-# f. fixed for law & order
-group_LOfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1] ,
-                                      group_equality = 'b_HElo1,b_HElo2')
-group_LOfixed_fit = sem(group_LOfixed_syntax,
-                        data = df_lavaan_mental, 
-                        estimator = "mlr",
-                        orthogonal = T, 
-                        cluster = 'LAD21CD',
-                        group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_LOfixed_fit, fit.measures=T, standardized=T)
-gc()
+cluster = makeCluster(12) 
+registerDoParallel(cluster)
 
-# compare
-anova_LO = as.data.frame(anova(group_LOfixed_fit, group_free_fit))
+tic()
 
-# g. fixed for infrastructure
-group_IRfixed_syntax = RC_GCLM_syntax(multiple = T,
-                                      control = control_names[-1] ,
-                                      group_equality = 'b_HEir1,b_HEir2')
-group_IRfixed_fit = sem(group_IRfixed_syntax,
-                        data = df_lavaan_mental, 
-                        estimator = "mlr",
-                        orthogonal = T, 
-                        cluster = 'LAD21CD',
-                        group = 'lsoa_dep'
-)
-beepr::beep()
-#summary(group_IRfixed_fit, fit.measures=T, standardized=T)
-gc()
+for (i in seq_along(lsoa_group)){
+  list_results = foreach(synt = syntax,
+                         .packages = 'lavaan',
+                         .combine = 'list') %dopar% {
+                           groupSEM(synt, lsoa_group[i])
+                         }
+  list_results_sens[[i]] = list_results
+  print(i)
+}
 
-# compare
-anova_IR = as.data.frame(anova(group_IRfixed_fit, group_free_fit))
+toc()
+
+stopCluster(cluster)
+
+
+
+
+
 
 # # ----------------------------------------------------------------------
 
@@ -215,46 +174,70 @@ anova_IR = as.data.frame(anova(group_IRfixed_fit, group_free_fit))
 
 # 1. Sample Description
 
-stationary = c('pop_census11', 'nonwhite', 'females', 'older', 'rural', 'n')
-nonstationary = c('samhi_index', 'prop_ibesa', 'est_qof_dep', 'antidep_rate',
-                  'z_mh_rate', 'health', 'healthcare', 'education', 'env', 'law_order',
+stationary = c(control_names[-3], 'lsoa_dep')
+nonstationary = c('samhi_index',
+                  'prop_ibesa',
+                  'est_qof_dep',
+                  'antidep_rate',
+                  'z_mh_rate',
+                  
+                  'social_care_adult',
+                  'social_care_children',
+                  'healthcare',
+                  'env',
+                  'law_order',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
 sumstat_dep1 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep == 1,],
-                              rownames = nm_out[-c(1,13)])
+                              rownames = c(nm_out[-14], 'IMD binary'), quant = F)
 sumstat_dep2 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep == 2,],
-                              rownames = nm_out[-c(1,13)])
+                              rownames = c(nm_out[-14], 'IMD binary'), quant = F)
 
-
-# bracket sd (optional)
-# sd_modify = function(dat){
-#   for (i in seq(3,17,2)){
-#     for(j in 2:nrow(dat)){
-#       if(!dat[j,i]==''){
-#         dat[j,i] = paste0('[',dat[j,i],']')
-#       }
-#     }
-#   }
-#   return(dat)
-# }
-# sumstat_dep1 = sd_modify(sumstat_dep1)
-# sumstat_dep2 = sd_modify(sumstat_dep2)
-
-# 2. Correlations
-cor = signif(cor(df_before_scaling[,vars_used]), 2)
-cor[lower.tri(cor, diag=F)] = ''
-colnames(cor) = 1:ncol(cor)
-rownames(cor) = nm_out[-1]
-rownames(cor)[12] = 'LSOA Income and Employment Deprivation'
+# 
+# # 2. Correlations
+# cor = signif(cor(df_before_scaling[,vars_used]), 2)
+# cor[lower.tri(cor, diag=F)] = ''
+# colnames(cor) = 1:ncol(cor)
+# rownames(cor) = nm_out[-1]
+# rownames(cor)[12] = 'LSOA Income and Employment Deprivation'
 
 # 3. Regression Table
 group_free_tab = CoefsExtract(models = 'group_free_fit')
 
 # 4. Anova Results
-anova_all = rbind(anova_SC, anova_HC[2,], anova_ED[2,], 
-                  anova_EN[2,], anova_LO[2,], anova_IR[2,])
+anova_all = rbind.data.frame(anova_list[[1]][1,],
+  do.call(rbind, lapply(anova_list, function(df) df[2, ])))
 
+# 5. Substantive
+
+ratio_policy = c()
+df_before_scaling = as.data.frame(df_before_scaling)
+for (i in policy_names_6){
+  ratio_policy = c(ratio_policy, 10/((exp(sd(log(df_before_scaling[,i])))-1)*100)
+  )
+  
+}
+id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
+ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
+
+# transforming
+pct_coef = CoefsExtract(models = 'group_free_fit',
+                        standardized = F,
+                        controls = NULL,
+                        df_transform = ratio_df) %>% 
+  filter(type_1 == 'c_policy') %>%
+  select(-c(type_1, type_2))
+
+
+pct_coef$id = c('Adult Social Care',
+                'Children Social Care',
+                'Healthcare',
+                'Environment',
+                'Law and Order',
+                'Infrastructure')
+
+# # ----------------------------------------------------------------------
 
 # 5. Descriptive Plots
 all_vars = c(health_vars,

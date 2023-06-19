@@ -148,7 +148,8 @@ rcgclm_fit = sem(rcgclm_syntax,
                  data = df_lv, 
                  estimator = "mlr",
                  orthogonal = T, 
-                 cluster = 'LAD21CD')
+                 cluster = 'LAD21CD'
+                 )
 beepr::beep()
 #summary(rcgclm_fit, std=T, ci = T)
 fm_rcgclm_fit = fitmeasures(rcgclm_fit, measures)

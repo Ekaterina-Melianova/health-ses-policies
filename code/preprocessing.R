@@ -184,6 +184,10 @@ controls_census = list(census1, census2, census3, census4) %>%
 df %<>% left_join(controls_census, by = 'lsoa11')
 
 # filtering City of London and Isles of Scilly
+pop_London_Scilly = df %>% filter(LAD21CD %in% c('E09000001',
+                                                'E06000053') & year == 2019) %>%
+  group_by(LAD21CD) %>%
+  summarise(pop = mean(pop))
 df %<>% filter(!LAD21CD %in% c('E09000001',
                                'E06000053')) %>%
   ungroup()
