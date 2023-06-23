@@ -25,10 +25,27 @@ options(max.print=3400)
 df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
 
 # LAD deprivation groups
-df %<>% dplyr::mutate(lsoa_dep = ifelse(lsoa_ses_score < quantile(lsoa_ses_score, probs = 0.5)[[1]], 1,
-                                        ifelse(lsoa_ses_score >= quantile(lsoa_ses_score, probs = 0.5)[[1]], 2, 0)))
-table(df$lsoa_dep)
-df = df %>% filter(lsoa_dep > 0)
+df = df %>% group_by(LAD21CD, year) %>%
+  dplyr::mutate(pop_prop = pop_census11/sum(pop_census11),
+                lsoa_ses_score_w = pop_prop*lsoa_ses_score,
+                lad_ses_score = sum(lsoa_ses_score_w)) %>%
+  select(lsoa11, year, LAD21CD,
+         pop_prop, lsoa_ses_score_w,
+         lad_ses_score, lsoa_ses_score, everything()) %>% ungroup()
+
+
+specify_probs = function(df, probs) {
+  for (i in seq_along(probs)) {
+    quantile_val = quantile(df$lad_ses_score, probs = unlist(probs[i]))
+    
+    df[[paste0("lsoa_dep_", i)]] = ifelse(df$lad_ses_score  <= quantile_val[1], 1,
+                                           ifelse(df$lad_ses_score  >= quantile_val[2], 2, 0))
+  }
+  
+  return(df)
+}
+df = specify_probs(df, probs = list(c(0.5, 0.5), c(0.4, 0.6), c(0.3, 0.7)))
+table(df$lsoa_dep_1)
 
 # a dataset for descriptive stat
 df_before_scaling = df
@@ -51,9 +68,6 @@ for (i in control_names[!control_names %in% c('public_health_mean',
   df[, i] = scale(df[, i])
 }
 
-# a dataframe for the sensitivity analysis
-df_for_outliers = df
-
 # normalize and log for spending
 for (i in c(policy_names_6,
             control_names[control_names %in% c('public_health_mean',
@@ -69,7 +83,7 @@ df = df %>%
 
 # final dataset - wide format
 df_lv = lavaan_df(dv = 'samhi_index',
-                  deprivation_cat = 'lsoa_dep',
+                  deprivation_cat = 'lsoa_dep_1',
                   df = df)
 df_lv = as.data.frame(na.omit(df_lv))
 summary(df_lv)
@@ -115,32 +129,61 @@ equality_params = c('b_HEhc1,b_HEhc2',
 syntax = list()
 for (i in seq_along(equality_params)){
   syntax[[i]] = RC_GCLM_syntax(multiple = T,
-                               control = control_names[-3],
-                               group_equality = equality_params[i])
+                               control = control_names[-c(3,12)],
+                               group_equality = equality_params[i]
+                               )
+  
+  # syntax[[i]] = RC_GCLM_syntax(model = 'regclm',
+  #                              endogeneous = c('HE', 'as', 'cs', 'hc'),
+  #                              impulses = F,
+  #                              past_states = F,
+  #                              cor = T)
   
 }
 
-lsoa_group = c('lsoa_dep', 'lsoa_dep')
+lsoa_group = c('lsoa_dep_1', 'lsoa_dep_2', 'lsoa_dep_3')
 
+list_combined <- list()
+i <- 1
+for (lsoa in lsoa_group){
+  
+  for (synt in syntax){
+    
+    list_combined[[i]] <- list(lsoa, synt)
+    i <- i + 1
+    
+  }
+}
 
-groupSEM = function(synt, lsoa){
+groupSEM = function(comb){
+  
+  lsoa <- comb[[1]]
+  synt <- comb[[2]]
+  
   list_result = list()
+  
+  df_lv = lavaan_df(dv = 'samhi_index',
+                    deprivation_cat = lsoa,
+                    df = df)
+  df_lv %<>% filter((!!as.name(lsoa)) > 0)
   list_result[[1]] = sem(synt,
-                         data = df_lv, 
+                         data = df_lv,
                          estimator = "mlr",
-                         orthogonal = T, 
+                         orthogonal = T,
                          cluster = 'LAD21CD',
                          group = lsoa)
   gc()
   
-  list_result[[2]] = as.data.frame(anova(list_result[[1]], group_free_fit))
+  #list_result[[2]] = as.data.frame(anova(list_result[[1]], group_free_fit))
   
   return(list_result)
   
 }
 
 # running
-#syntax = syntax[c(3,4)]
+
+#syntax = syntax[c(5,6)]
+#lsoa_group = lsoa_group[2:3]
 
 list_results_sens = list()
 
@@ -148,21 +191,16 @@ cluster = makeCluster(12)
 registerDoParallel(cluster)
 
 tic()
-
-for (i in seq_along(lsoa_group)){
-  list_results = foreach(synt = syntax,
-                         .packages = 'lavaan',
-                         .combine = 'list') %dopar% {
-                           groupSEM(synt, lsoa_group[i])
-                         }
-  list_results_sens[[i]] = list_results
-  print(i)
-}
+list_results = foreach(comb = list_combined,
+                       .packages = c('lavaan', 'tidyverse',
+                                     'dplyr', 'tidyr',
+                                     'magrittr'),
+                       .combine = c) %dopar% {
+                         groupSEM(comb)
+                       }
 
 toc()
-
 stopCluster(cluster)
-
 
 
 
