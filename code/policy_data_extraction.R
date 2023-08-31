@@ -519,6 +519,7 @@ policy_df %<>% filter(!LAD19CD %in% c('E06000059',
                                        'E06000028'
                                        ))
 # West Somerset, Taunton Deane, Somerset West and Taunton; Dorset, Bournemouth, Christchurch and Poole; Suffolk Coastal, Waveney District, East Suffolk
+# Dorset, Bournemouth, and Poole; Taunton Deane and West Somerset; Forest Heath, St Edmundsbury, Suffolk Coastal, and Waveney.
 # ----------------------------------------------------------------------
 
 # testing the difference with 2018 data by Alexiou and Barr

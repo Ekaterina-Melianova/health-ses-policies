@@ -61,6 +61,9 @@ df_lv = lavaan_df(dv = 'samhi_index',
 df_lv = as.data.frame(na.omit(df_lv))
 summary(df_lv)
 
+# saving
+saveRDS(df_lv, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
+
 #par(mfrow=c(2,2))
 # quick dist 
 # hist(df_lv$HE1)
@@ -77,10 +80,6 @@ summary(df_lv)
 # hist(df$law_order, breaks = 30)
 # hist(df$infrastructure, breaks = 30)
 # hist(df$public_health, breaks = 30)
-
-# Lsum = df_before_scaling %>% group_by(London) %>%
-#   summarise(n = mean(law_order))
-# Lsum$n[2]/Lsum$n[1]
 
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
