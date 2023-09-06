@@ -63,6 +63,7 @@ summary(df_lv)
 
 # saving
 saveRDS(df_lv, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
+saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_hlm.RDS')
 
 #par(mfrow=c(2,2))
 # quick dist 
@@ -901,24 +902,25 @@ for (i in 1:5){
     ggplot(aes(year, !!sym(all_vars[i]))) +
     scale_x_continuous(name = NULL, 
                        breaks = 2013:2019)+ 
-    scale_y_continuous(name = NULL, limits = c(-3.5, 3))  +
+    scale_y_continuous(name = 'Z-Standardised Scores', limits = c(-3.5, 3))  +
     geom_line(aes(group = LAD21CD), color = "lightblue") +
     geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
     theme_pubclean() + 
     theme(axis.text = element_text(size = 24)) + 
-    theme(axis.title.x = element_text(size = 24))
+    theme(axis.title.y = element_text(size = 24))
 }
+
 for (i in 6:length(all_vars)){
   list_plots[[i]] = panel  %>% 
     ggplot(aes(year, !!sym(all_vars[i]))) +
     scale_x_continuous(name = NULL, 
                        breaks = 2013:2019)+ 
-    scale_y_continuous(name = NULL)  +
+    scale_y_continuous(name = 'Spending, £ per capita')+
     geom_line(aes(group = LAD21CD), color = "lightblue") +
     geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
     theme_pubclean() + 
     theme(axis.text = element_text(size = 24)) + 
-    theme(axis.title.x = element_text(size = 24))
+    theme(axis.title.y = element_text(size = 24)) 
 }
 
 # health variables
@@ -953,9 +955,10 @@ ggarrange(list_plots[[6]],
                      'Infrastructure'
           ),
           ncol = 3, nrow = 2,
-          font.label = list(size = 30), align ='hv')
+          font.label = list(size = 30), align ='hv') +
+  ylab("Common Y-Axis Label")
 ggsave("C:/Users/ru21406/YandexDisk/PhD Research/Literature review/spending_lineplots.jpeg",
-       width = 60, height = 40, units = 'cm')
+       width = 60, height = 40, units = 'cm') 
 
 
 
