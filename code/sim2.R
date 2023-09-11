@@ -117,69 +117,70 @@ simulateDataset = function(df, name_spending, name_health, corr_sh, autocorr_s){
   
 }
 
-cor(df.full$samhi_index[df.full$year==2013],
-    df.full$social_care_adult[df.full$year==2013])
-
-# ----------------------------------------------------------------------------
-# ---------------------- 1. DATA LOADING AND PREPROCESSING
-# ----------------------------------------------------------------------------
-
-# LOAD DATASET
-df.full = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
-
-# PREPROCESSING
-df.full = df.full %>% ungroup()
-df.full$social_care_adult = df.full$pop * df.full$social_care_adult
-
-# ~~~~~~~~~~~~~~~~~ EXAMPLES
-
-
-df.1 = simulateDataset(df = df.full,
-                        name_spending = 'social_care_adult',
-                        name_health = 'samhi_index',
-                        corr_sh = -0.5,
-                        autocorr_s = 0.8)
-
-cor(df.1$S_2013, df.1$H_2013)
-
-df.2 = simulateDataset(df = df.full,
-                        name_spending = 'social_care_adult',
-                        name_health = 'samhi_index',
-                        corr_sh = 0.5,
-                        autocorr_s = 0.8)
-
-cor(df.2$S_2013, df.2$H_2013)
-
-df.3 = simulateDataset(df = df.full,
-                        name_spending = 'social_care_adult',
-                        name_health = 'samhi_index',
-                        corr_sh = 0,
-                        autocorr_s = 0.9)
-
-cor(df.3$S_2013, df.3$H_2013)
-
-df.4 = simulateDataset(df = df.full,
-                        name_spending = 'social_care_adult',
-                        name_health = 'samhi_index',
-                        corr_sh = 0.8,
-                        autocorr_s = 0.8)
-
-cor(df.4$S_2013, df.4$H_2013)
-
-long_data = pivot_longer(df.1,
-                          cols = contains('_'),
-                          names_to = c(".value", "year"),
-                          names_pattern = "(\\w)_(\\d+)")
-
-
-####
-
-df_lad = df.full %>% group_by(year, LAD21CD) %>%
-  summarise(M = mean(samhi_index),
-            S = mean(social_care_adult)) %>%
-  filter(year == 2013)
-
-cor(df_lad$M, df_lad$S)
+#cor(df.full$samhi_index[df.full$year==2013],
+#    df.full$social_care_adult[df.full$year==2013])
+#
+## ----------------------------------------------------------------------------
+## ---------------------- 1. DATA LOADING AND PREPROCESSING
+## ----------------------------------------------------------------------------
+#
+## LOAD DATASET
+#df.full = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
+#
+## PREPROCESSING
+#df.full = df.full %>% ungroup()
+#df.full$social_care_adult = df.full$pop * df.full$social_care_adult
+#df.full$law_order = df.full$pop * df.full$law_order
+#
+## ~~~~~~~~~~~~~~~~~ EXAMPLES
+#
+#
+#df.1 = simulateDataset(df = df.full,
+#                        name_spending = 'social_care_adult',
+#                        name_health = 'samhi_index',
+#                        corr_sh = -0.5,
+#                        autocorr_s = 0.8)
+#
+#cor(df.1$S_2013, df.1$H_2013)
+#
+#df.2 = simulateDataset(df = df.full,
+#                        name_spending = 'social_care_adult',
+#                        name_health = 'samhi_index',
+#                        corr_sh = 0.5,
+#                        autocorr_s = 0.8)
+#
+#cor(df.2$S_2013, df.2$H_2013)
+#
+#df.3 = simulateDataset(df = df.full,
+#                        name_spending = 'social_care_adult',
+#                        name_health = 'samhi_index',
+#                        corr_sh = 0,
+#                        autocorr_s = 0.9)
+#
+#cor(df.3$S_2013, df.3$H_2013)
+#
+#df.4 = simulateDataset(df = df.full,
+#                        name_spending = 'social_care_adult',
+#                        name_health = 'samhi_index',
+#                        corr_sh = 0.8,
+#                        autocorr_s = 0.8)
+#
+#cor(df.4$S_2013, df.4$H_2013)
+#
+#long_data = pivot_longer(df.1,
+#                          cols = contains('_'),
+#                          names_to = c(".value", "year"),
+#                          names_pattern = "(\\w)_(\\d+)")
+#
+#
+#####
+#
+#df_lad = df.full %>% group_by(year, LAD21CD) %>%
+#  summarise(M = mean(samhi_index),
+#            S = mean(social_care_adult)) %>%
+#  filter(year == 2013)
+#
+#cor(df_lad$M, df_lad$S)
   
 
 
