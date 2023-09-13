@@ -39,9 +39,8 @@ for (i in 1:100){
     }
 }
 
-#wd = "C:/Users/ru21406/OneDrive - University of Bristol/Desktop/test4"
-wd = "C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/test4"
-
+wd = "C:/Users/ru21406/OneDrive - University of Bristol/Desktop/test2"
+#wd = "C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/test4"
 setwd(wd)
 
 num_cores = 12
@@ -98,7 +97,8 @@ beepr::beep()
 
 ## data
 df_lv = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
-df_hlm = df_lv %>% select(lsoa11, LAD21CD, starts_with(c('as', 'HE'))) %>%
+df_hlm = df_lv %>% dplyr::select(lsoa11, LAD21CD,
+                                 colnames(df_lv)[grepl('as|HE', colnames(df_lv))]) %>%
   pivot_longer(cols = starts_with(c('HE', 'as')),
                names_to = c(".value", "time"),
                names_pattern = "(\\w+)(\\d+)") 
@@ -111,7 +111,10 @@ lsoa_sample = temp %>% group_by(LAD21CD, lsoa11) %>%
 #table(lsoa_sample$LAD21CD)
 
 # to wide format
-LongToWide = function(dat, hlm = F, sample = lsoa_sample$lsoa11){
+LongToWide = function(dat,
+                      spending_name = 'as',
+                      hlm = F,
+                      sample = lsoa_sample$lsoa11){
   
   dat = pivot_longer(dat,
                      cols = contains('_'),
@@ -126,13 +129,13 @@ LongToWide = function(dat, hlm = F, sample = lsoa_sample$lsoa11){
   
   out = dat %>%
   dplyr::rename(all_of(setNames(c('H', 'S'),
-                                c('HE', 'as')))) %>%
+                                c('HE', spending_name)))) %>%
   mutate(time = year - (min(year)-1))
   
   if (hlm == F){
     out = out %>% tidyr::pivot_wider(id_cols = all_of(c('lsoa11', 'LAD21CD')),
                      names_from = time, 
-                     values_from = all_of(c('HE', 'as')),
+                     values_from = all_of(c('HE', spending_name)),
                      names_sep = '') 
   } else{
     out = out %>% 
@@ -254,7 +257,7 @@ simfit_rcgclm = simulate_models(model_fit_type = 'regclm', max_samples = 5)
 toc()
 
 tic()
-simfit_hlm = simulate_models(model_fit_type = 'hlm')
+simfit_hlm = simulate_models(model_fit_type = 'hlm', max_samples = 3)
 toc()
 
 tic()
@@ -285,17 +288,18 @@ naive_rcgclm = sem(syntax_rcgclm,
                    estimator = "mlr",
                    cluster = 'LAD21CD',
                    orthogonal = T)
-naive_rcgclm_sum = tidy(naive_rcgclm) %>% filter(label %in% c('b_HEas', 'd_HEas')) %>%
+naive_rcgclm_sum = tidy(naive_rcgclm) %>% filter(label %in% c('b_HElo', 'd_HElo')) %>%
   slice(1:2) %>% select(label, estimate, std.error) %>%
-  mutate(label = ifelse(label == 'b_HEas', 'long', 'short'))
+  mutate(label = ifelse(label == 'b_HElo', 'long', 'short'))
 
 ## hlm
 naive_hlm = lmer(HE ~ as + time + (1|LAD21CD) + (1|lsoa11), 
                  data = df_hlm %>% filter(lsoa11 %in% lsoa_sample$lsoa11))
 naive_hlm_sum = as.data.frame(coef(summary(naive_hlm))) %>%
-  select(estimate = Estimate , std.error = `Std. Error`) %>%
+  dplyr::select(estimate = Estimate , std.error = `Std. Error`) %>%
   slice(2)  %>% mutate(label = 'total')
 summary(naive_hlm)
+
 naive_hlm_coef = coef(naive_hlm)$LAD21CD
 naive_hlm_coef$LAD21CD = rownames(naive_hlm_coef)
 temp_hlm = df_hlm %>% left_join(naive_hlm_coef, by = 'LAD21CD')
@@ -306,17 +310,24 @@ cor(temp_hlm$HE, temp_hlm$`(Intercept)`)
 df_hlm_lad = df_hlm  %>% #filter(lsoa11 %in% lsoa_sample$lsoa11)%>%
   group_by(LAD21CD,time) %>% 
   dplyr::summarise(as_lad = mean(as),
+                   lo_lad = mean(lo),
                    var_as_lad = var(as),
                    HE_lad = mean(HE),
                    time = mean(time))
 cor(df_hlm_lad$HE_lad, df_hlm_lad$as_lad)
+cor(df_hlm_lad$HE_lad, df_hlm_lad$lo_lad)
 
 cor(df_hlm_lad$as_lad[df_hlm_lad$time==1],
     df_hlm_lad$as_lad[df_hlm_lad$time==2])
 
 cor(df_hlm$HE[df_hlm$time==4], df_hlm$as[df_hlm$time==3])
 
-
+df_hlm_lsoa = df_hlm  %>% 
+  group_by(lsoa11) %>% 
+  dplyr::summarise(cor_lo = cor(lo, HE),
+                   cor_as = cor(as, HE))
+mean(df_hlm_lsoa$cor_lo)
+mean(df_hlm_lsoa$cor_as)
 
 #within_var = var_components[var_components$grp == 'LAD21CD', "vcov"]
 #between_var = var_components[var_components$grp == 'Residual', "vcov"]
@@ -356,7 +367,7 @@ extract_heatmap_data = function(lst_data,
   
   ## adding the naive model parameters and compute bias
   sumtab_df %<>% left_join(naive_model, by = 'label') %>%
-    mutate(bias = (estimate - `Estimate Average`)/estimate)%>%
+    mutate(`bias, %` = (estimate - `Estimate Average`)/estimate)%>%
     mutate_if(is.numeric, ~ round(., 4))
 
   return(sumtab_df)
@@ -437,11 +448,13 @@ ggplot(sumtab_rcgclm_short, aes(corr, autocorr, fill = bias)) +
   theme_ipsum()
 
 # rcclpm
-ggplot(sumtab_hlm, aes(corr, autocorr, fill = bias)) + 
+ggplot(sumtab_hlm, aes(corr, autocorr, fill = `bias, %`)) + 
   geom_tile()+
   scale_fill_gradient2(low="red", high="darkgreen", mid = 'white') +
   theme_ipsum()
 
+ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/simulated_hlm.jpeg",
+       width = 20, height = 10, units = 'cm') 
 
 
 # combine both plots using grid.arrange()
