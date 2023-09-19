@@ -531,47 +531,6 @@ fit_measures_seq[] = lapply(fit_measures_seq, sprintf, fmt = "%.3f")
 
 # create tables with effects and fit measures
 
-TableEffects = function(dat = effects_all,
-                        .end_new = end_new,
-                        .parameters = parameters,
-                        .section_names = section_names,
-                        fit_measures = NULL) {
-  
-  patterns = c("~HE|HE~#",
-                "~as|as~#",
-               "~cs|cs~#",
-               "~hc|hc~#",
-                "~en|en~#",
-               "~lo|lo~#",
-               "~fr|fr~#")
-
-  dat = dat %>%
-    filter(!type %in% c('d_impulse_cov',
-                        'e_growth_cov',
-                        'g_other_policies',
-                        'h_controls',
-                        'i_cor')) %>%
-    mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
-                                                        .end_new[match(y, patterns)], x), 
-                       .init = id)) %>%
-    rbind.fill(., fit_measures %>% rownames_to_column("id") %>% 
-                 mutate(id = str_remove(id, ".scaled"))) %>%
-    mutate(across(1, ~replace(.x, 34:46, .parameters)))
-  
-  # subsections in a table
-  for (i in rev(c(1, 8, 14, 20, 27, 34))) {
-    dat = tibble::add_row(dat, .before = i)
-  }
-  
-  dat = dat %>%
-    mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
-    mutate_all(~ ifelse(is.na(.), "", .)) %>%
-    select(-type)
-  
-  
-  return(dat)
-}
-
 seq_models_coefs = TableEffects(fit_measures = fit_measures_seq)
 seq_models_coefs[,c(3,5)] = NULL # remove empty short-run for only_growth_fit and reclpm_fit
 seq_models_coefs[10:15,1] = end_new[2:7]
@@ -752,22 +711,6 @@ col_pct = c('',
             'Model 2.2', '',
             'Model 2.3', '',
             'Model 2.4', '')
-
-# a function to create a head with the long-run and short-run indication
-
-SubHead = function(tab, which_null = NULL, n, colnames){
-  
-  head = c('', rep(c('Long-run', 'Short-run'), n))
-  
-  if (!is.null(which_null)){
-    head = head[-which_null]
-  }
-  
-  tab = rbind.data.frame(head, tab)
-  colnames(tab) = colnames
-  
-  return(tab)
-}
 
 # Main text
 

@@ -33,6 +33,28 @@ health_vars = c('samhi_index',
                 'est_qof_dep',
                 'prop_ibesa')
 
+parameters = c('Number of Parameters',
+               'Chi-Squared',
+               'Degrees of Freedom',
+               'CFI',
+               'TLI',
+               'SMRM',
+               'RMSEA',
+               'RMSEA Lower Bound',
+               'RMSEA Upper Bound',
+               'AGFI',
+               'AIC',
+               'BIC',
+               'Log-Likelihood')
+
+end_new = c('Mental Health',
+            'Adult Social Care',
+            'Children Social Care',
+            'Healthcare',
+            'Environment',
+            'Law and Order', 
+            'Infrastructure')
+
 #lad_inc_vars = paste0(policy_names_6[-2], '_inc')
 
 endogeneous = c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'fr')
@@ -1003,9 +1025,13 @@ CoefsExtract = function(models = NULL,
   })
   
   # curating
-  
+  if (any(grepl('group', colnames(m_out[[1]])))){
+    BY = c('id', 'group')
+  } else{
+    BY = 'id'
+  }
   coefs_long <- m_out %>% 
-    reduce(full_join, by = 'id') %>% 
+    reduce(full_join, by = BY) %>% 
     select(id, everything())
   
   fun <- function(x){
@@ -1187,6 +1213,50 @@ CoefsExtract = function(models = NULL,
   return(coefs_wide)
 }
 
+# creating tables with effects
+TableEffects = function(dat = effects_all,
+                        .end_new = end_new,
+                        .parameters = parameters,
+                        param_range = 34:46,
+                        section_name_rows = c(1, 8, 14, 20, 27, 34),
+                        .section_names = section_names,
+                        fit_measures = NULL) {
+  
+  patterns = c("~HE|HE~#",
+               "~as|as~#",
+               "~cs|cs~#",
+               "~hc|hc~#",
+               "~en|en~#",
+               "~lo|lo~#",
+               "~fr|fr~#")
+  
+  dat = dat %>%
+    filter(!type %in% c('d_impulse_cov',
+                        'e_growth_cov',
+                        'g_other_policies',
+                        'h_controls',
+                        'i_cor')) %>%
+    mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
+                                                        .end_new[match(y, patterns)], x), 
+                       .init = id)) %>%
+    rbind.fill(., fit_measures %>% rownames_to_column("id") %>% 
+                 mutate(id = str_remove(id, ".scaled"))) %>%
+    mutate(across(1, ~replace(.x, param_range, .parameters)))
+  
+  # subsections in a table
+  for (i in rev(section_name_rows)) {
+    dat = tibble::add_row(dat, .before = i)
+  }
+  
+  dat = dat %>%
+    mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
+    mutate_all(~ ifelse(is.na(.), "", .)) %>%
+    select(-type)
+  
+  
+  return(dat)
+}
+
 # Extracting growth curve cor tables
 MatrixEffects = function(dat, 
                          cor_name,
@@ -1270,6 +1340,30 @@ MatrixEffects = function(dat,
   
   }
   return(pivot)
+}
+
+# a function to create a head with the long-run and short-run indication
+
+SubHead = function(tab, which_null = NULL, n, colnames, 
+                   sub_head = c('Long-run', 'Short-run'),
+                   sub_head_add = NULL){
+  
+  
+  
+  if (!is.null(sub_head_add)){
+    head = c('', paste(rep(sub_head, n), sub_head_add))
+  } else{
+    head = c('', rep(sub_head, n))
+  }
+  
+  if (!is.null(which_null)){
+    head = head[-which_null]
+  }
+  
+  tab = rbind.data.frame(head, tab)
+  colnames(tab) = colnames
+  
+  return(tab)
 }
 
 # Clean Tables
