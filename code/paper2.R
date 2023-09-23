@@ -110,11 +110,11 @@ colnames(df_lv_1)
 df_lv_2 = lavaan_df(dv = 'samhi_index',
                     deprivation_cat = 'lsoa_ses_score2',
                     df = df) %>% 
-  filter(lsoa_dep_2 > 0)
+  filter(lsoa_ses_score2 > 0)
 df_lv_3 = lavaan_df(dv = 'samhi_index',
                     deprivation_cat = 'lsoa_ses_score3',
                     df = df) %>% 
-  filter(lsoa_dep_3 > 0)
+  filter(lsoa_ses_score3 > 0)
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
 # ----------------------------------------------------------------------
