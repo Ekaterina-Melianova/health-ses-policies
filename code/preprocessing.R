@@ -80,18 +80,47 @@ setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data')
 dep15 = read.csv('imd2015lsoa.csv')
 table(dep15$Indices.of.Deprivation)
 # length(unique(dep15$FeatureCode)) n LSOAs in 2019
-dep15 %<>% filter(Indices.of.Deprivation %in% c('b. Income Deprivation Domain', 
-                                                'c. Employment Deprivation Domain',
-                                                'd. Education, Skills and Training Domain',
-                                                'i. Income Deprivation Affecting Children Index (IDACI)',
-                                                'j. Income Deprivation Affecting Older People Index (IDAOPI)'
-                                                )) %>%
+dep15 %<>% #filter(Indices.of.Deprivation %in% c('b. Income Deprivation Domain', 
+           #                                     'c. Employment Deprivation Domain',
+           #                                     'd. Education, Skills and Training Domain',
+           #                                     'i. Income Deprivation Affecting Children Index (IDACI)',
+           #                                     'j. Income Deprivation Affecting Older People Index (IDAOPI)'
+           #                                     )) %>%
   filter(Measurement == 'Score') %>% 
   dplyr::select(FeatureCode, Value, Indices.of.Deprivation) %>%
-  pivot_wider(id_cols = FeatureCode, names_from = Indices.of.Deprivation,
-              values_from = Value, names_sort = T) 
-names(dep15) = c('lsoa11', 'inc_dep', 'empl_dep', 'edu_dep', 'yinc_dep', 'oinc_dep')
+  pivot_wider(id_cols = FeatureCode,
+              names_from = Indices.of.Deprivation,
+              values_from = Value,
+              names_sort = T) 
+names(dep15) = c('lsoa11', 
+                 'IMD',
+                 'inc_dep', 
+                 'empl_dep',
+                 'edu_dep',
+                 'health_dep',
+                 'crime_dep',
+                 'housing_dep',
+                 'envir_dep',
+                 'yinc_dep',
+                 'oinc_dep')
 dep15$lsoa_ses_score = rowMeans(dep15[, c('inc_dep', 'empl_dep', 'yinc_dep', 'oinc_dep')])
+
+# normalising all domains
+dep15[,-1] = lapply(dep15[,-1], function(x) as.numeric(scale(x)))
+dep15$lsoa_inc_empl_edu_score = rowMeans(dep15[, c('inc_dep',
+                                               'empl_dep',
+                                               'yinc_dep', 
+                                               'oinc_dep',
+                                               'edu_dep')])
+dep15$lsoa_edu_score = dep15$edu_dep
+dep15$lsoa_all_score = rowMeans(dep15[, c('inc_dep', 
+                                          'empl_dep',
+                                          'edu_dep',
+                                          'crime_dep',
+                                          'housing_dep',
+                                          'envir_dep',
+                                          'yinc_dep',
+                                          'oinc_dep')])
 
 # joining with the main df
 df %<>% left_join(dep15)
@@ -225,7 +254,7 @@ df$SD = ifelse(df$class == 'SD', 1, 0)
 #df = df %>% filter(housing_transport > 0 & environment_planning_cultural > 0 & pub_health_soc_care > 0)
 
 # saving the final df
-saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
+saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
 
 
 

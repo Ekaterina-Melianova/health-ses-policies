@@ -731,17 +731,18 @@ lavaan_df = function(dv,
                              'class'),
                      invariant = control_names,
                      deprivation_cat = NULL,
+                     other = NULL,
                      time = 'time',
                      max_time = 7,
                      df){
 
   lookup = setNames(c(dv, ivs), c(dv_map, ivs_map))
-  selected = c(dv_map, ivs_map, ids, invariant, deprivation_cat, time)
+  selected = c(dv_map, ivs_map, ids, invariant, deprivation_cat, time, other)
 
   out = df %>%
     dplyr::rename(all_of(lookup)) %>%
     dplyr::select(all_of(selected)) %>%
-    tidyr::pivot_wider(id_cols = all_of(c(ids, invariant, deprivation_cat)),
+    tidyr::pivot_wider(id_cols = all_of(c(ids, invariant, deprivation_cat, other)),
                        names_from = time, 
                        values_from = all_of(c(dv_map, ivs_map)),
                        names_sep = '')
@@ -929,6 +930,18 @@ plot_effects = function(models = growth_impulses_pastst_fit,
 
 # Extract coefficients for SEM models
 
+# sign fun
+sig_fun = function(x){
+  case_when(
+    x <= 0.001 ~ '***',
+    x <= 0.01 & x > 0.001 ~ '**',
+    x <= 0.05 & x > 0.01 ~ '*',
+    x > 0.05 & x <= 0.1 ~ '^',
+    is.na(x) ~ 'l',
+    TRUE ~ ''
+  )
+}
+
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
                         standardized = F,
@@ -943,7 +956,7 @@ CoefsExtract = function(models = NULL,
   colnm = c("lhs", "op", "rhs", "group", 'est.std', 'pvalue', 'se')
   tech = c('lhs', 'op', 'rhs')
   
-  m_out <- lapply(models, function(model) {
+  m_out = lapply(models, function(model) {
     
     if (standardized == T){
       stdsol = standardizedSolution(eval(parse(text = model)))
@@ -971,11 +984,11 @@ CoefsExtract = function(models = NULL,
       
       stdsol = stdsol %>% 
         separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ |\\.") %>%
-        rename(est.std = std.all, se = std.error, pvalue = p.value)
+        dplyr::rename(est.std = std.all, se = std.error, pvalue = p.value)
       
       stdsol_main = stdsol %>%
         select(-est.std) %>%
-        rename(est.std = estimate) %>%
+        dplyr::rename(est.std = estimate) %>%
         filter(
           op == "~" & rhs %in% end |
           op == "~1" & lhs %in% growth |
@@ -995,11 +1008,11 @@ CoefsExtract = function(models = NULL,
     
     stdsol_cov = stdsol_cov %>% 
       separate(term, into = c("lhs", "rhs"), sep = " =~ | ~~ | ~1 | ~ |\\.") %>%
-      rename(est.std = std.all, se = std.error, pvalue = p.value)
+      dplyr::rename(est.std = std.all, se = std.error, pvalue = p.value)
     
     stdsol_cov = stdsol_cov %>%
       select(-est.std) %>%
-      rename(est.std = estimate) %>%
+      dplyr::rename(est.std = estimate) %>%
       filter(
           op == "~~" & lhs %in% growth & rhs %in% growth|
           op == "~~" & rhs %in% impulses & lhs %in% impulses|
@@ -1030,36 +1043,25 @@ CoefsExtract = function(models = NULL,
   } else{
     BY = 'id'
   }
-  coefs_long <- m_out %>% 
+  coefs_long = m_out %>% 
     reduce(full_join, by = BY) %>% 
     select(id, everything())
   
-  fun <- function(x){
-    case_when(
-      x <= 0.001 ~ '***',
-      x <= 0.01 & x > 0.001 ~ '**',
-      x <= 0.05 & x > 0.01 ~ '*',
-      x > 0.05 & x <= 0.1 ~ '^',
-      is.na(x) ~ 'l',
-      TRUE ~ ''
-    )
-  }
-  
-  coefs_long <- coefs_long %>%
-    mutate_at(vars(contains('pvalue')), fun) %>%
+  coefs_long = coefs_long %>%
+    mutate_at(vars(contains('pvalue')), sig_fun) %>%
     mutate_all(~ ifelse(is.na(.), "", .))
   
-  coefs_long$id <- str_replace(coefs_long$id, "~1", "~#") %>%
+  coefs_long$id = str_replace(coefs_long$id, "~1", "~#") %>%
     gsub('[[:digit:]]+', '', .)
   
   
-  end_ <- gsub('[[:digit:]]+', '', end)
-  impulses_ <- gsub('[[:digit:]]+', '', impulses)
+  end_ = gsub('[[:digit:]]+', '', end)
+  impulses_ = gsub('[[:digit:]]+', '', impulses)
   
   # determining types of effects for further arrangement
   coefs_long = as.data.table(coefs_long)
   
-  impulse_variants <- data.frame(t(combn(c(impulses_, impulses_), 2)))%>% 
+  impulse_variants = data.frame(t(combn(c(impulses_, impulses_), 2)))%>% 
     dplyr::mutate(collapse = glue('{X1}~~{X2}')) %>% 
     pull(collapse)
   
@@ -1093,7 +1095,7 @@ CoefsExtract = function(models = NULL,
     )]
   }
 
-  coefs_long <- coefs_long %>%
+  coefs_long = coefs_long %>%
     arrange(type) %>%
     mutate(
       long_or_short = ifelse(grepl('e_', id) & !grepl('~~', id), 'short', 'long'),
@@ -1114,14 +1116,14 @@ CoefsExtract = function(models = NULL,
   
   # to wide format
   
-  values_from <- colnames(coefs_long)[grepl('est|pvalue|se',colnames(coefs_long))]
-  ids <- colnames(coefs_long)[colnames(coefs_long) %in% c('id', 'group', 'type')]
+  values_from = colnames(coefs_long)[grepl('est|pvalue|se',colnames(coefs_long))]
+  ids = colnames(coefs_long)[colnames(coefs_long) %in% c('id', 'group', 'type')]
   
-  coefs_wide <- pivot_wider(coefs_long, id_cols = all_of(ids),
+  coefs_wide = pivot_wider(coefs_long, id_cols = all_of(ids),
                             names_from = long_or_short,
                             values_from = all_of(values_from))
   
-  columns <- colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
+  columns = colnames(coefs_wide)[grep('est.std.', colnames(coefs_wide))]
   
   # apply transformation
   
@@ -1172,7 +1174,7 @@ CoefsExtract = function(models = NULL,
 
   }
 
-  coefs_wide <- coefs_wide %>%
+  coefs_wide = coefs_wide %>%
     select(all_of(ids), starts_with('est')) %>%
     as.data.frame()
   
@@ -1204,7 +1206,8 @@ CoefsExtract = function(models = NULL,
         as.numeric(sub("^.*_(\\d+)$", "\\1", x))
       }
     }
-    coefs_wide = coefs_wide[,c('id', names((sort(unlist(sapply(colnames, get_number))))))]
+    coefs_wide = coefs_wide[,c('id', names((sort(unlist(sapply(colnames, get_number)), 
+                                                 decreasing = T))))]
     
   }
   
@@ -1219,6 +1222,7 @@ TableEffects = function(dat = effects_all,
                         .parameters = parameters,
                         param_range = 34:46,
                         section_name_rows = c(1, 8, 14, 20, 27, 34),
+                        subsections = T,
                         .section_names = section_names,
                         fit_measures = NULL) {
   
@@ -1243,16 +1247,19 @@ TableEffects = function(dat = effects_all,
                  mutate(id = str_remove(id, ".scaled"))) %>%
     mutate(across(1, ~replace(.x, param_range, .parameters)))
   
-  # subsections in a table
-  for (i in rev(section_name_rows)) {
-    dat = tibble::add_row(dat, .before = i)
-  }
-  
-  dat = dat %>%
-    mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
-    mutate_all(~ ifelse(is.na(.), "", .)) %>%
-    select(-type)
-  
+  if (subsections == T){
+      # subsections in a table
+    for (i in rev(section_name_rows)) {
+      dat = tibble::add_row(dat, .before = i)
+      }
+    dat = dat %>%
+      mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
+      mutate_all(~ ifelse(is.na(.), "", .)) %>%
+      select(-type)
+  } else{
+    dat = dat %>%
+      select(-type)
+    }
   
   return(dat)
 }
@@ -1420,6 +1427,7 @@ CiSplit = function(dat, rownm = F){
 summarize_data = function(dat = df_before_scaling,
                           .stationary = stationary,
                           .nonstationary = nonstationary,
+                          group = TRUE,
                           year = 'year',
                           id = 'LAD21CD',
                           stat = list('Mean' = mean,
@@ -1434,25 +1442,27 @@ summarize_data = function(dat = df_before_scaling,
   dat = dat %>%
     ungroup()
   
+  if(is.null(group)){
+   
   # summary for non stationary
-  sumstat <- dat %>%
+  sumstat = dat %>%
     dplyr::select(all_of(.nonstationary), year) %>%
     group_by(year) %>%
-    summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
+    dplyr::summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
     pivot_longer(-year, names_to = c("variable", "stat"), names_sep = "__") %>%
     pivot_wider(id_cols = c(year, variable), names_from = stat, values_from = value) %>%
     pivot_wider(id_cols = variable, names_from = year, values_from = all_of(stat_names))
   
   # sort colnames
   colnames = colnames(sumstat)
-  get_number <- function(x) {
+  get_number = function(x) {
     if (!x == 'variable'){
       as.numeric(sub("^.*_(\\d+)$", "\\1", x))
     }
   }
   sumstat = sumstat[,c('variable', names((sort(unlist(sapply(colnames, get_number))))))]
   sumstat[,-1] = lapply(sumstat[,-1], sprintf, fmt = "%.2f")
-  
+   
   # summary for stationary
   
   # adjusting for the LAD-based vars - n
@@ -1463,7 +1473,7 @@ summarize_data = function(dat = df_before_scaling,
 
   overall = dat_st %>%
     dplyr::select(all_of(vars_used)) %>%
-    summarise(across(everything(), stat, .names = "{.col}__{.fn}", na.rm=T)) %>%
+    dplyr::summarise(across(everything(), stat, .names = "{.col}__{.fn}", na.rm=T)) %>%
     pivot_longer(names_to = 'key', values_to = 'value', cols = everything()) %>%
     separate(key, into = c("variable", "stat"), sep = "__") %>%
     pivot_wider(id_cols = variable, names_from = stat, values_from = value)
@@ -1477,6 +1487,27 @@ summarize_data = function(dat = df_before_scaling,
     dplyr::select(-variable) %>%
     add_column(`Names` = rownames, .before = 1)
   
+   } else{
+    
+  sumstat_fin = dat %>%
+    dplyr::select(all_of(vars_used), as.name(group)) %>%
+    group_by(!!as.name(group)) %>%
+    dplyr::summarise(across(everything(), stat, .names = "{.col}__{.fn}")) %>%
+    pivot_longer(-as.name(group), names_to = c("variable", "stat"), names_sep = "__") %>%
+    pivot_wider(id_cols = c(as.name(group), variable), names_from = stat, values_from = value) %>%
+    pivot_wider(id_cols = variable, names_from = as.name(group), values_from = all_of(stat_names))%>%
+    dplyr::select(-variable) %>%
+    add_column(`Names` = rownames, .before = 1)
+  
+  ending_numbers = as.numeric(gsub(".*_", "", names(sumstat_fin)[-1]))
+  ordered_columns = names(sumstat_fin)[-1][order(ending_numbers)]
+  sumstat_fin = sumstat_fin[, c('Names', ordered_columns)]
+  
+  sumstat_fin[,-1] = lapply(sumstat_fin[,-1], sprintf, fmt = "%.2f")
+  
+  year = group
+   }
+
   if (quant == T){
     
   # if IQR == T
@@ -1489,7 +1520,7 @@ summarize_data = function(dat = df_before_scaling,
     q75_col <- paste0("Q75", suffixes[i])
     sumstat_fin = sumstat_fin %>% 
       mutate(!!q25_col := paste0('[', !!sym(q25_col), ';', !!sym(q75_col), ']')) %>%
-      dplyr::select(-!!q75_col) %>% rename(!!!setNames(q25_col, paste0('IQR',suffixes[i])))
+      dplyr::select(-!!q75_col) %>% dplyr::rename(!!!setNames(q25_col, paste0('IQR',suffixes[i])))
   }
   
   stat_names = c(stat_names[!stat_names %in% c("Q25", "Q75")], 'IQR')
@@ -1507,11 +1538,16 @@ summarize_data = function(dat = df_before_scaling,
   
   
   
-  stat_head <- data.frame(matrix(nrow = 1, ncol = ncol(sumstat_fin)))
-  colnames(stat_head) <- colnames(sumstat_fin)
-  stat_head[1,] <- c('', rep(stat_names, (length(year_vec) + 1)))
+  stat_head = data.frame(matrix(nrow = 1, ncol = ncol(sumstat_fin)))
+  colnames(stat_head) = colnames(sumstat_fin)
   
-  sumstat_fin <- rbind(stat_head, sumstat_fin)
+  if (!is.null(group)){
+  stat_head[1,] <- c('', rep(stat_names, (length(year_vec))))
+  } else{
+    stat_head[1,] <- c('', rep(stat_names, (length(year_vec) + 1)))
+    }
+  
+  sumstat_fin = rbind(stat_head, sumstat_fin)
   
   return(sumstat_fin)
   

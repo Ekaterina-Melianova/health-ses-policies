@@ -16,30 +16,44 @@ library(data.table)
 library(tictoc)
 library(doParallel)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
 options(max.print=340)
 
 # pre-processing
 
 # loading the data
-df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
+df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
 
-# LAD deprivation groups
+dep_vec = c('inc_dep', 
+            'empl_dep',
+            'edu_dep',
+            'crime_dep',
+            'housing_dep',
+            'envir_dep',
+            'yinc_dep',
+            'oinc_dep',
+            'lsoa_ses_score')
+
 df = df %>% group_by(LAD21CD, year) %>%
-  dplyr::mutate(pop_prop = pop_census11/sum(pop_census11),
-                lsoa_ses_score_w = pop_prop*lsoa_ses_score,
-                lad_ses_score = sum(lsoa_ses_score_w)) %>%
-  select(lsoa11, year, LAD21CD,
-         pop_prop, lsoa_ses_score_w,
-         lad_ses_score, lsoa_ses_score, everything()) %>% ungroup()
+  dplyr::mutate(pop_prop = pop_census11/sum(pop_census11)) %>%
+  mutate_at(vars(all_of(dep_vec)), list(~ sum(. * pop_prop))) %>%
+  select(lsoa11,
+         year, 
+         LAD21CD,
+         pop_prop,
+         all_of(dep_vec),
+         everything()) %>% ungroup()
 
-
-specify_probs = function(df, probs) {
+# 1 - wealthy
+specify_probs = function(df, probs, vars = dep_vec) {
   for (i in seq_along(probs)) {
-    quantile_val = quantile(df$lad_ses_score, probs = unlist(probs[i]))
+    for (j in seq_along(dep_vec)){
+      
+      quantile_val = quantile(df[[dep_vec[j]]], probs = unlist(probs[i]))
+      df[[paste0(dep_vec[j], i)]] = ifelse(df[,dep_vec[j]]  <= quantile_val[1], 1,
+                                           ifelse(df[,dep_vec[j]]  >= quantile_val[2], 2, 0))
+    }
     
-    df[[paste0("lsoa_dep_", i)]] = ifelse(df$lad_ses_score  <= quantile_val[1], 1,
-                                           ifelse(df$lad_ses_score  >= quantile_val[2], 2, 0))
   }
   
   return(df)
@@ -47,7 +61,9 @@ specify_probs = function(df, probs) {
 df = specify_probs(df, probs = list(c(0.5, 0.5),
                                     c(0.4, 0.6),
                                     c(0.3, 0.7)))
-table(df$lsoa_dep_1)
+table(df$lsoa_ses_score1)
+table(df$lsoa_ses_score2)
+table(df$lsoa_ses_score3)
 
 # a dataset for descriptive stat
 df_before_scaling = df
@@ -84,17 +100,19 @@ df = df %>%
 
 
 # final dataset - wide format
+
+dep_vec_3 = paste0(rep(dep_vec, each = 3), 1:3)
 df_lv_1 = lavaan_df(dv = 'samhi_index',
-                  deprivation_cat = 'lsoa_dep_1',
-                  df = df)
-df_lv = as.data.frame(na.omit(df_lv))
-summary(df_lv)
+                    deprivation_cat = 'lsoa_ses_score1',
+                    df = df)
+#df_lv_1 = as.data.frame(na.omit(df_lv_1))
+colnames(df_lv_1)
 df_lv_2 = lavaan_df(dv = 'samhi_index',
-                    deprivation_cat = 'lsoa_dep_2',
+                    deprivation_cat = 'lsoa_ses_score2',
                     df = df) %>% 
   filter(lsoa_dep_2 > 0)
 df_lv_3 = lavaan_df(dv = 'samhi_index',
-                    deprivation_cat = 'lsoa_dep_3',
+                    deprivation_cat = 'lsoa_ses_score3',
                     df = df) %>% 
   filter(lsoa_dep_3 > 0)
 # ----------------------------------------------------------------------
@@ -111,7 +129,7 @@ group_free_fit_dep_1 = sem(group_free_syntax,
                            estimator = "mlr",
                            orthogonal = T, 
                            cluster = 'LAD21CD',
-                           group = 'lsoa_dep_1')
+                           group = 'lsoa_ses_score1')
 beepr::beep()
 gc()
 fm_group_free_dep_1 = fitmeasures(group_free_fit_dep_1, measures)
@@ -122,7 +140,7 @@ group_free_fit_dep_2 = sem(group_free_syntax,
                            estimator = "mlr",
                            orthogonal = T, 
                            cluster = 'LAD21CD',
-                           group = 'lsoa_dep_2')
+                           group = 'lsoa_ses_score2')
 beepr::beep()
 gc()
 fm_group_free_dep_2 = fitmeasures(group_free_fit_dep_2, measures)
@@ -132,7 +150,7 @@ group_free_fit_dep_3 = sem(group_free_syntax,
                            estimator = "mlr",
                            orthogonal = T, 
                            cluster = 'LAD21CD',
-                           group = 'lsoa_dep_3')
+                           group = 'lsoa_ses_score3')
 beepr::beep()
 gc()
 fm_group_free_dep_3 = fitmeasures(group_free_fit_dep_3, measures)
@@ -169,7 +187,7 @@ for (i in seq_along(equality_params)){
   
 }
 
-lsoa_group = c('lsoa_dep_1', 'lsoa_dep_2', 'lsoa_dep_3')
+lsoa_group = c('lsoa_ses_score1', 'lsoa_ses_score2', 'lsoa_ses_score3')
 
 list_combined = list()
 i = 1
@@ -240,7 +258,7 @@ stopCluster(cluster)
 
 # 1. Sample Description
 
-stationary = c(control_names[-c(3,12)], 'lsoa_dep_1')
+stationary = c(control_names[-c(3,12)], 'lsoa_ses_score1')
 nonstationary = c('samhi_index',
                   'prop_ibesa',
                   'est_qof_dep',
@@ -255,10 +273,15 @@ nonstationary = c('samhi_index',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-sumstat_dep1 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep_1 == 1,],
-                              rownames = c(nm_out[-c(14,23)], 'IMD binary'), quant = F)
-sumstat_dep2 = summarize_data(dat = df_before_scaling[df_before_scaling$lsoa_dep_1 == 2,],
-                              rownames = c(nm_out[-c(14,23)], 'IMD binary'), quant = F)
+sumstat_dep1 = summarize_data(dat = df_before_scaling,
+                              group = 'lsoa_ses_score1',
+                              rownames = nm_out[-c(14,23)],
+                              quant = T,
+                              stat = list('Mean' = mean,
+                                          'SD' = sd,
+                                          'Q25' = function(x) quantile(x, probs = 0.25),
+                                          'Q75' = function(x) quantile(x, probs = 0.75)))
+colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
 
 # 3. Regression Table
 
@@ -272,17 +295,19 @@ group_free_tab = CoefsExtract(models = c('group_free_fit_dep_1',
                                          'group_free_fit_dep_3')) %>%
   dplyr::select(everything(),type = type_1, -type_2)
 
-fit_measures_gf = cbind.data.frame(est.std.x_long_1 = fm_group_free_dep_1,
-                                   est.std.y_long_1 = fm_group_free_dep_2,
-                                   est.std_long_1 = fm_group_free_dep_2,
-                                   est.std.x_short_1 = fm_group_free_dep_1,
-                                   est.std.y_short_1 = fm_group_free_dep_2,
-                                   est.std_short_1 = fm_group_free_dep_2)
+fit_measures_gf = cbind.data.frame(est.std.x_long_2 = fm_group_free_dep_1,
+                                   est.std.y_long_2 = fm_group_free_dep_2,
+                                   est.std_long_2 = fm_group_free_dep_3,
+                                   
+                                   est.std.x_short_2 = fm_group_free_dep_1,
+                                   est.std.y_short_2 = fm_group_free_dep_2,
+                                   est.std_short_2 = fm_group_free_dep_3)
 fit_measures_gf[] = lapply(fit_measures_gf, sprintf, fmt = "%.3f")
 gf_models_coefs = TableEffects(dat = group_free_tab,
                                fit_measures = fit_measures_gf,
                                param_range = 20:32,
-                               section_name_rows = c(1, 8, 14, 20))
+                               section_name_rows = c(1, 8, 14, 20)
+                               )
 gf_models_coefs[10:15,1] = end_new[2:7]
 
 # long-run table
@@ -322,13 +347,24 @@ gf_models_coefs_short = SubHead(CiSplit(gf_models_coefs_short),
                                colnames = col_gf)
 
 # 4. Anova Results
-anova_table = function(list_range, free_model){
-  anova_list = lapply(list_results[list_range], function(model) anova(free_model, model))
+anova_table = function(list_range, 
+                       free_model){
+  
+  anova_list = lapply(list_results[list_range], 
+                      function(model) anova(free_model, model))
+  
   out = rbind.data.frame(anova_list[[1]][1,],
                          do.call(rbind, lapply(anova_list, function(df) df[2, ])))
-  out$effect_name = c('Free Model', rep(descriptives_names[6:11], 2))
-  out$Dynamic = c('', 'Long-Run', rep('', 5), 'Short-Run', rep('', 5))
-  out %<>% dplyr::select(Dynamic, effect_name, everything())
+  out = out[-1,]
+  out[] = lapply(out, sprintf, fmt = "%.3f")
+  out$`Constrained Spending` = c(rep(descriptives_names[6:11], 2))
+  out$Dynamic = c(#'Free Model', 
+                  rep('Long-Run', 6),
+                  rep('Short-Run', 6))
+  out %<>% dplyr::select(Dynamic, `Constrained Spending`,
+                         `Chisq diff`, `Pr(>Chisq)`)%>%
+    mutate(Sig = sig_fun(`Pr(>Chisq)`))
+  out[out == 'NA'|out == 'l'] = ''
   rownames(out) = NULL
   
   return(out)
@@ -340,6 +376,33 @@ anova_2 = anova_table(list_range = 13:24,
                       free_model = group_free_fit_dep_2)
 anova_3 = anova_table(list_range = 25:36,
                       free_model = group_free_fit_dep_3)
+anova_all = anova_1 %>%
+  left_join(anova_2, by = c('Constrained Spending', 'Dynamic'))%>%
+  left_join(anova_3, by = c('Constrained Spending', 'Dynamic'))
+#lavTestLRT(group_free_fit_dep_3, list_results[[26]],
+#           method = 'satorra.2000')
+
+
+aov(df$samhi_index ~ df$year)
+
+df_diff = df %>% dplyr::select(LAD21CD, year, samhi_index, lsoa_dep_1) %>%
+  group_by(LAD21CD, year) %>%
+  summarise(lad_samhi_index = mean(samhi_index),
+            lsoa_dep_1 = mean(lsoa_dep_1)) %>%
+  ungroup() %>%
+  pivot_wider(id_cols = c(year), 
+              names_from = lsoa_dep_1,
+              values_from = lad_samhi_index)
+
+mean(df$samhi_index[df$year == 2013 & df$lsoa_dep_1 == 1])
+mean(df$samhi_index[df$year == 2013 & df$lsoa_dep_1 == 2])
+mean(df$samhi_index[df$year == 2019 & df$lsoa_dep_1 == 1])
+mean(df$samhi_index[df$year == 2019 & df$lsoa_dep_1 == 2])
+
+t.test(mean(samhi_dep1_13 - samhi_dep2_13),
+       mean(samhi_dep1_19 - samhi_dep2_19))
+
+
 
 # 5. Substantive
 
@@ -354,98 +417,209 @@ id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
 ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
 
 # transforming
-pct_coef = CoefsExtract(models = 'group_free_fit',
+pct_coefs = CoefsExtract(models = c('group_free_fit_dep_1',
+                                    'group_free_fit_dep_2',
+                                    'group_free_fit_dep_3'),
                         standardized = F,
                         controls = NULL,
                         df_transform = ratio_df) %>% 
   filter(type_1 == 'c_policy') %>%
-  select(-c(type_1, type_2))
+  dplyr::select(everything(),type = type_1, -type_2)
 
 
-pct_coef$id = c('Adult Social Care',
+pct_coefs$id = c('Adult Social Care',
                 'Children Social Care',
                 'Healthcare',
                 'Environment',
                 'Law and Order',
                 'Infrastructure')
+gf_pct_coefs = TableEffects(dat = pct_coefs,
+                            fit_measures = fit_measures_gf,
+                            param_range = 7:19,
+                            subsections = F)
+
+# long-run table
+gf_pct_coefs_long = gf_pct_coefs %>%
+  dplyr::select(id,
+                contains('long')) %>%
+  #left_join(anova_all, by = d) %>%
+  dplyr::select(id,
+                contains('.x'),
+                contains('.y'),
+                everything())
+gf_models_coefs_long = SubHead(CiSplit(gf_pct_coefs_long),
+                               sub_head = c('Top', 'Bottom'),
+                               sub_head_add = c('50%', '50%', 
+                                                '40%', '40%',
+                                                '30%', '30%'),
+                               n = 3,
+                               colnames = col_gf)
+
+# short-run table
+gf_pct_coefs_short = gf_pct_coefs %>%
+  dplyr::select(id,
+                contains('short')) %>%
+  dplyr::select(id,
+                contains('.x'),
+                contains('.y'),
+                everything())
+gf_models_coefs_short = SubHead(CiSplit(gf_pct_coefs_short),
+                                sub_head = c('Top', 'Bottom'),
+                                sub_head_add = c('50%', '50%', 
+                                                 '40%', '40%',
+                                                 '30%', '30%'),
+                                n = 3,
+                                colnames = col_gf)
 
 # # ----------------------------------------------------------------------
 
-# 5. Descriptive Plots
-all_vars = c(health_vars,
-             policy_names_6)
-df_before_scaling$lsoa_dep = factor(df_before_scaling$lsoa_dep,
-                           levels = 1:2,
-                           labels = c('LSOA Income and Employment Deprivation < 50%',
-                                      'LSOA Income and Employment Deprivation > 50%'))
+library(ggpubr)
 vars_original_names = c('samhi_index',
                         'prop_ibesa',
                         'antidep_rate',
                         'est_qof_dep',
                         'z_mh_rate',
-                        'health',
+                        'social_care_adult',
+                        'social_care_children',
                         'healthcare',
-                        'education',
                         'env',
                         'law_order',
                         'infrastructure')
+all_vars = c(health_vars,
+             policy_names_6)
+
+df_plot = df_before_scaling %>% select(year,
+                                       lsoa11,
+                                       LAD21CD,
+                                       all_of(c(all_vars,
+                                                dep_vec_3,
+                                                lsoa_group))) 
+
+# Z-scores for health domains
+for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+  df_plot[, i] = scale(df_plot[, i])
+}
 
 # Mental indices comparison by lsoa_dep
-panel_df1 = df_before_scaling %>% 
-  group_by(year, lsoa_dep) %>%
-  dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE))) %>%
-  pivot_longer(cols = samhi_index:infrastructure) %>%
-  ungroup() 
-panel_df1$name = factor(panel_df1$name,
+
+for (i in lsoa_group) {
+  
+  num = as.numeric(unlist(str_extract_all(i, "\\d+")))
+  if (num == 1){
+    df_plot <- df_plot %>%
+      mutate(!!sym(i) := factor(!!sym(i),
+                                levels = 1:2,
+                                labels = c('Top 50%',
+                                           'Bottom 50%')))
+    
+  } else if(num == 2) {
+    df_plot <- df_plot %>%
+      mutate(!!sym(i) := factor(!!sym(i),
+                                levels = 1:2,
+                                labels = c('Top 40%',
+                                           'Bottom 40%')))
+  }else if(num == 3) {
+    df_plot <- df_plot %>%
+      mutate(!!sym(i) := factor(!!sym(i),
+                                levels = 1:2,
+                                labels = c('Top 30%',
+                                           'Bottom 30%')))
+  }
+  
+  
+}
+
+list_panel = list()
+n = 0
+for (j in lsoa_group){
+  n = n + 1
+  list_panel[[n]] = df_plot %>% 
+    group_by(year, !!sym(j)) %>%
+    dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE))) %>%
+    pivot_longer(cols = samhi_index:infrastructure) %>%
+    ungroup() %>% dplyr::rename(dep_colour = !!sym(j)) %>%
+    mutate(dep_cat = sub('[[:digit:]]+', '', sym(j)))%>%
+    mutate(dep_linetype = j)
+}
+
+panel_df = do.call(rbind.data.frame, list_panel) %>% 
+  filter(!is.na(dep_colour))
+
+panel_df$name = factor(panel_df$name,
                        levels = vars_original_names,
-                       labels = nm_out[2:12])
+                       labels = nm_out[1:11])
+#panel_df %<>% filter(name %in% 'SAMHI')
 
-panel_df1  %>% 
-  filter(name %in% nm_out[2:6]) %>%
-  ggplot(aes(year, value)) +
+cols = c('Top 50%' = "#4A90E2", 
+         'Top 40%' = "#0000CC",
+         'Top 30%' = "#000055",
+         'Bottom 50%' = "#C9302C",
+         'Bottom 40%' = "#8A2525",
+         'Bottom 30%' = "#550000")
+
+cols = c('Top 50%' = "#4A90E2", 
+         'Top 40%' = "#4A90E2",
+         'Top 30%' = "#4A90E2",
+         'Bottom 50%' = "#8A2525",
+         'Bottom 40%' = "#8A2525",
+         'Bottom 30%' = "#8A2525")
+
+linetypes = c('Top 50%' = "dotted", 
+         'Top 40%' = "dashed",
+         'Top 30%' = "solid",
+         'Bottom 50%' = "dotted",
+         'Bottom 40%' = "dashed",
+         'Bottom 30%' = "solid")
+
+panel_df %>%
+  filter(name %in% nm_out[1:5])  %>%
+  ggplot(aes(year, value, colour = dep_colour, linetype = dep_colour)) +
   scale_x_continuous(name = NULL, 
                      breaks = 2013:2019)+ 
-  scale_y_continuous(name = NULL
-  ) + 
+  scale_y_continuous(name = 'Z-Standardised Scores', limits = c(-1.5, 1.5)) + 
+  theme(axis.text = element_text(size = 24)) +
+  geom_smooth(method = loess,
+              linewidth = 0.5,
+              se = T,
+              formula = y ~ x,
+              level = 0.9,
+              fill = 'lightgrey') +
+  scale_color_manual(values = cols) +
+  scale_linetype_manual(values = linetypes) +
+  facet_wrap(~ name, scales = 'free') +
+  theme_pubclean()+ 
+  theme(axis.title.x = element_text(size = 24),
+        legend.title = element_blank(),
+        legend.position = 'bottom') #+ 
+ #scale_fill_manual(values = c(rep("#0072B2", 3), rep("#CC79A7", 3))) +
+ #scale_colour_manual(values = c(rep("#0072B2", 3), rep("#CC79A7", 3)))
+ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/mhealth_smoothplots.svg",
+       width = 25, height = 18, units = 'cm')
+
+
+# Spending comparison 
+panel_df  %>% 
+  filter(name %in% nm_out[6:11]) %>%
+  ggplot(aes(year, value, colour = dep_colour, linetype = dep_colour)) +
+  scale_x_continuous(name = NULL, 
+                     breaks = 2013:2019)+ 
+  scale_y_continuous(name = 'Spending, £ per capita'#, limits = c(100, 1400)
+                     ) + 
   theme(axis.text = element_text(size = 24))  +
-  geom_smooth(aes(color = lsoa_dep, fill = lsoa_dep),
-              method = loess, se = T, fullrange = T,
-              formula = y ~ x) + 
+  geom_smooth(method = loess,
+              linewidth = 0.5,
+              se = T,
+              formula = y ~ x,
+              level = 0.9,
+              fill = 'lightgrey') +
+  scale_color_manual(values = cols) +
+  scale_linetype_manual(values = linetypes)  +
   facet_wrap(~ name, scales = 'free') +
   theme_pubclean() + 
   theme(axis.title.x = element_text(size = 24),
         legend.title = element_blank(),
-        legend.position = 'bottom') + 
-  scale_fill_manual(values = c("#0072B2", "#CC79A7")) +
-  scale_colour_manual(values = c("#0072B2", "#CC79A7"))
-
-
-# Spending comparison by lsoa_dep
-panel_df2 = df_before_scaling %>% 
-  distinct(LAD21CD, year, .keep_all = TRUE) %>%
-  group_by(year, lsoa_dep) %>%
-  dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE))) %>%
-  pivot_longer(cols = samhi_index:infrastructure) %>%
-  ungroup() 
-panel_df2$name = factor(panel_df2$name,
-                        levels = vars_original_names,
-                        labels = nm_out[2:12])
-
-panel_df2  %>% 
-  filter(!name %in% nm_out[2:6]) %>%
-  ggplot(aes(year, value)) +
-  scale_x_continuous(name = NULL, 
-                     breaks = 2013:2019)+ 
-  scale_y_continuous(name = NULL
-  ) + 
-  theme(axis.text = element_text(size = 24))  +
-  geom_smooth(aes(color = lsoa_dep, fill = lsoa_dep),
-              method = loess, se = T, fullrange = T,
-              formula = y ~ x) + 
-  facet_wrap(~ name, scales = 'free') +
-  theme_pubclean() + 
-  theme(axis.title.x = element_text(size = 24),
-        legend.title = element_blank(),
-        legend.position = 'bottom')  + 
-  scale_fill_manual(values = c("#0072B2", "#CC79A7")) +
-  scale_colour_manual(values = c("#0072B2", "#CC79A7"))
+        legend.position = 'bottom') # + 
+  #scale_fill_manual(values = c("#0072B2", "#CC79A7")) +
+  #scale_colour_manual(values = c("#0072B2", "#CC79A7"))
+ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/spending_smoothplots.svg",
+       width = 25, height = 18, units = 'cm')
