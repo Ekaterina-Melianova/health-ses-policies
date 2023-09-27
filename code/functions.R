@@ -179,9 +179,9 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
     glue_collapse("\n")
   Slope_Var = map(endogeneous, ~  glue("s{.x} ~~ var_s{.x}*s{.x}")) %>%
     glue_collapse("\n")
-  Intercept_Mean = map(endogeneous, ~  glue("i{.x} ~ 1")) %>%
+  Intercept_Mean = map(endogeneous, ~  glue("i{.x} ~ mean_i_{.x}*1")) %>%
     glue_collapse("\n")
-  Slope_Mean = map(endogeneous, ~  glue("s{.x} ~ 1")) %>%
+  Slope_Mean = map(endogeneous, ~  glue("s{.x} ~ mean_s_{.x}*1")) %>%
     glue_collapse("\n")
 
   A = map(endogeneous, ~ glue("{.x}{1:max_time}") %>%

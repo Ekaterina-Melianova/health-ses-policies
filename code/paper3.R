@@ -16,8 +16,8 @@ library(doParallel)
 library(tictoc)
 library(simsem)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/sim2.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/sim2.R')
 
 ## LOAD DATASET
 df.full = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
@@ -300,6 +300,11 @@ naive_hlm_sum = as.data.frame(coef(summary(naive_hlm))) %>%
   slice(2)  %>% mutate(label = 'total')
 summary(naive_hlm)
 
+naive_hlm = lmer(HE ~ as + (1|LAD21CD), 
+                 data = df_hlm %>% filter(lsoa11 %in% lsoa_sample$lsoa11))
+
+performance::icc(naive_hlm, by_group = T)
+
 naive_hlm_coef = coef(naive_hlm)$LAD21CD
 naive_hlm_coef$LAD21CD = rownames(naive_hlm_coef)
 temp_hlm = df_hlm %>% left_join(naive_hlm_coef, by = 'LAD21CD')
@@ -310,7 +315,7 @@ cor(temp_hlm$HE, temp_hlm$`(Intercept)`)
 df_hlm_lad = df_hlm  %>% #filter(lsoa11 %in% lsoa_sample$lsoa11)%>%
   group_by(LAD21CD,time) %>% 
   dplyr::summarise(as_lad = mean(as),
-                   lo_lad = mean(lo),
+                   #lo_lad = mean(lo),
                    var_as_lad = var(as),
                    HE_lad = mean(HE),
                    time = mean(time))
