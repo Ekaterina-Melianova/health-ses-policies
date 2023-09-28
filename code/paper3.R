@@ -288,9 +288,9 @@ naive_rcgclm = sem(syntax_rcgclm,
                    estimator = "mlr",
                    cluster = 'LAD21CD',
                    orthogonal = T)
-naive_rcgclm_sum = tidy(naive_rcgclm) %>% filter(label %in% c('b_HElo', 'd_HElo')) %>%
+naive_rcgclm_sum = tidy(naive_rcgclm) %>% filter(label %in% c('b_HEas', 'd_HEas')) %>%
   slice(1:2) %>% select(label, estimate, std.error) %>%
-  mutate(label = ifelse(label == 'b_HElo', 'long', 'short'))
+  mutate(label = ifelse(label == 'b_HEas', 'long', 'short'))
 
 ## hlm
 naive_hlm = lmer(HE ~ as + time + (1|LAD21CD) + (1|lsoa11), 
