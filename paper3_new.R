@@ -5,7 +5,7 @@ par_tab = list(
   c('b_HEas',1),
   c('b_asHE','(-5)'),
   c('b_asas',20),
-  c('covar_iHE.ias','(-21)'),
+  c('covar_iHE.ias',NA),
   c('covar_iHE.sHE',1),
   c('covar_iHE.sas','(-0.5)'),
   c('covar_ias.sHE','(-0.5)'),
@@ -44,17 +44,17 @@ param_init = parameterestimates(fit_init) %>%
 
 par_tab = list(
   c('b_HEHE',0.05),
-  c('b_HEas',0.01),
+  c('b_HEas','b_HEas'),
   c('b_asHE','(-0.05)'),
   c('b_asas',0.2),
-  c('covar_iHE.ias','covar_iHE.ias'),
-  c('covar_iHE.sHE',0.01),
-  c('covar_iHE.sas','(-0.005)'),
-  c('covar_ias.sHE','(-0.005)'),
-  c('covar_ias.sas','(-0.01)'),
-  c('covar_sHE.sas','(-0.001)'),
-  c('d_HEHE',0.2),
-  c('d_HEas','(-0.01)'),
+  c('cov_iHE.ias','NA'),
+  c('cov_iHE.sHE',0.01),
+  c('cov_iHE.sas','(-0.005)'),
+  c('cov_ias.sHE','(-0.005)'),
+  c('cov_ias.sas','(-0.01)'),
+  c('cov_sHE.sas','(-0.001)'),
+  c('d_HEHE',0.02),
+  c('d_HEas','(-0.02)'),
   c('d_asHE',0.01),
   c('d_asas',0.01),
   c('ecov_HEas',0.001),
@@ -65,40 +65,26 @@ par_tab = list(
   c('mean_s_HE','(-0.2)'),
   c('mean_s_as','(-0.05)'),
   c('var_iHE','var_iHE'),
-  c('var_ias','var_ias'),
+  c('var_ias','var_iHE'),
   c('var_sHE',0.005),
   c('var_sas',0.005))
-
 
 
 par_tab = do.call(rbind.data.frame, par_tab)
 colnames(par_tab) = c('label', 'par')
 
-par_tab_list = list()
 cov_vec = seq(-0.5, 0.5, 0.1)
 
-pars = numeric(0)
-for (i in seq_along(cov_vec)){
-  means = as.data.frame(mvrnorm(n = 100,
-                 mu = c(0, 0),
-                 Sigma = matrix(c(1, cov_vec[i],
-                                  cov_vec[i], 1),
-                                nrow = 2)),
-                 empirical = T)
-  var_ias = var(means[,1])
-  var_iHE = var(means[,2])
-  covar_iHE.ias = cov(means)[1,2]
-  pars_ = t(rbind(var_ias, var_iHE, covar_iHE.ias))
-  pars = rbind.data.frame(pars, pars_)
-  pars %<>% arrange(covar)
-}
+par_tab_list = list()
 
-covar_iHE.ias = seq(-0.3, 0.3, 0.1)
-
+means = as.data.frame(mvrnorm(n = 100,
+                              mu = c(0, 0),
+                              Sigma = matrix(c(1, cov_vec[1],
+                                               cov_vec[1], 1),
+                                             nrow = 2)),
+                      empirical = T)
 par_tab$par[par_tab$label == 'var_ias'] = cov(means)[1,1]
 par_tab$par[par_tab$label == 'var_iHE'] = cov(means)[2,2]
-par_tab$par[par_tab$label == 'covar_iHE.ias'] = cov(means)[1,2]
-
 for (i in 1:nrow(means)){
   par_tab$par[par_tab$label == 'mean_i_as'] = means[i,1]
   par_tab$par[par_tab$label == 'mean_i_HE'] = means[i,2]
@@ -119,13 +105,18 @@ for (synt in seq_along(par_tab_list)){
     glue_collapse("\n")
   }
   
-  synt_list[[synt]] = gsub('\\+ -', '- ', synt_list[[synt]])
 }
+
+synt2 = list()
+for (i in seq_along(cov_vec)){
+  synt2[[i]] = lapply(synt_list, function(x) gsub('NA', cov_vec[[i]], x))
+}
+
 
 Output = list()
 n_samples = length(synt_list)
 N = 100
-seed_vec = seq(1, 100, 1)
+seed_vec = seq(1, N, 1)
 for (n_samples in 1:n_samples){
   Output[[n_samples]] = sim(20, 
                             model = synt_list[[n_samples]],
@@ -141,7 +132,10 @@ lst_test = list()
 for (i in 1:length(Output[[1]])){
   lst_test[[i]] = cbind.data.frame(do.call(rbind.data.frame,
                                 lapply(Output, function(lst) lst[[i]])),
-                                LAD21CD = rep(1:N, each = n_samples))
+                                LAD21CD = rep(1:N, each = n_samples)) %>%
+    group_by(LAD21CD) %>%
+    mutate(across(starts_with('as'), 
+                  function(x) mean(x)))
 }
 fit_sim = sem(syntax_sim,
               data = df_lv,
@@ -190,8 +184,10 @@ cor(temp1)
 cor(temp2)
 cor(temp3)
 
+cor(lst_X_aggregated[[1]][[3]])
+
 fit_temp1 = sem(syntax_sim,
-                data = temp1,
+                data = lst_X_original[[1]][[2]],
                 estimator = "mlr",
                 cluster = 'LAD21CD',
                 orthogonal = T
@@ -199,13 +195,32 @@ fit_temp1 = sem(syntax_sim,
 summary(fit_temp1)
 varTable(fit_temp1)
 
+cor(lst_X_original[[1]][[2]]$HE1, lst_X_original[[1]][[2]]$as1)
+cor(lst_X_original[[1]][[2]]$HE2, lst_X_original[[1]][[2]]$as2)
+cor(lst_X_original[[1]][[2]]$HE3, lst_X_original[[1]][[2]]$as3)
+cor(lst_X_original[[1]][[2]]$HE4, lst_X_original[[1]][[2]]$as4)
+cor(lst_X_original[[1]][[2]]$HE5, lst_X_original[[1]][[2]]$as5)
+
+cor(lst_XY_aggregated[[1]][[3]]$HE1, lst_XY_aggregated[[1]][[3]]$as1)
+cor(lst_XY_aggregated[[1]][[3]]$HE2, lst_XY_aggregated[[1]][[3]]$as2)
+cor(lst_XY_aggregated[[1]][[3]]$HE3, lst_XY_aggregated[[1]][[3]]$as3)
+cor(lst_XY_aggregated[[1]][[3]]$HE4, lst_XY_aggregated[[1]][[3]]$as4)
+cor(lst_XY_aggregated[[1]][[3]]$HE5, lst_XY_aggregated[[1]][[3]]$as5)
+
+cor(Output[[1]][[2]][[1]]$HE1, Output[[1]][[2]][[1]]$as1)
+cor(Output[[1]][[2]][[1]]$HE2, Output[[1]][[2]][[1]]$as2)
+cor(Output[[1]][[2]][[1]]$HE3, Output[[1]][[2]][[1]]$as3)
+cor(Output[[1]][[2]][[1]]$HE4, Output[[1]][[2]][[1]]$as4)
+cor(Output[[1]][[2]][[1]]$HE5, Output[[1]][[2]][[1]]$as5)
+Output[[1]][[1]][[1]]
+
 fit_temp2 = sem(syntax_sim,
-                data = temp2,
+                data = Output[[1]][[1]][[1]],
                 estimator = "mlr",
-                cluster = 'LAD21CD',
+               # cluster = 'LAD21CD',
                 orthogonal = T)
-varTable(fit_temp2)
 summary(fit_temp2)
+varTable(fit_temp2)
 
 fit_temp3 = sem(syntax_sim,
                 data = temp3,

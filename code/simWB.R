@@ -1,11 +1,50 @@
 
+library(gridExtra)
+library(cowplot)
+library(hrbrthemes)
+
+ToWide = function(dat){
+  
+  dat =  dat %>%
+    ungroup() %>% 
+    mutate(lsoa11 = 1:n()) %>%
+    pivot_longer(cols = -c(LAD21CD, lsoa11),
+                 names_to = c(".value", "time"),
+                 names_pattern = "(\\w+)(\\d+)")
+  dat$time = as.numeric(dat$time)
+  
+  return(dat)
+  
+}
+
+syntax_sim = RC_GCLM_syntax(endogeneous = c('HE', 'as'),
+                            control = NULL)
 fit_sim = sem(syntax_sim,
               data = df_lv,
               estimator = "mlr",
               cluster = 'LAD21CD',
               orthogonal = T)
 
-cov_vec = seq(-0.5, 0.5, 0.1)
+fit_sim_hlm = function(dat){
+  
+  model = lme4::lmer(HE ~ as + time + (1|LAD21CD) + (1|lsoa11),
+                     data = dat,
+                     control = lmerControl(calc.derivs = FALSE))
+  out_list = list(coef = summary(model)[["coefficients"]][,'Estimate'],
+                  se = summary(model)[["coefficients"]][,'Std. Error'],
+                  converged = TRUE)
+  
+  return(out_list)
+}
+
+    
+
+#cov_vec = seq(-0.5, 0.5, 0.1)
+#cov_vec = c(-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6)
+#cov_vec = seq(-0.9, 0.9, 0.1)
+
+cov_vec = c(-0.9, -0.7, -0.5, -0.3, 0, 0.3, 0.5, 0.7, 0.9)
+
 
 cov_vec_ = cov_vec
 par_tab_ = par_tab
@@ -13,23 +52,41 @@ syntax_sim_ = syntax_sim
 
 simWB = function(cov_vec = cov_vec_,
                  par_tab = par_tab_,
-                 syntax_sim = syntax_sim_){
+                 syntax_sim = syntax_sim_,
+                 type = 'clpm'){
   
   fin = list()
   fin = vector(mode = 'list', length = length(cov_vec))
   for (i in seq_along(fin)){
     fin[[i]] = vector(mode = 'list', length = 4)
   }
-
+  
+  
   for (K in seq_along(cov_vec)){
-    par_tab_list = list()
     
-    means = as.data.frame(mvrnorm(n = 100,
-                                  mu = c(0, 0),
-                                  Sigma = matrix(c(1, cov_vec[K],
-                                                   cov_vec[K], 1),
-                                                 nrow = 2)),
-                          empirical = T)
+    #cov_vec = cov_vec[7:8]
+    n_groups = 5
+    N = 50
+    #seed_vec = seq(1, length(cov_vec), 1)
+    
+    
+    par_tab = list(
+      c('cov_iHE.ias','NA'),
+      c('mean_i_HE','mean_i_HE'),
+      c('mean_i_as','mean_i_as'),
+      c('var_iHE','var_iHE'),
+      c('var_ias','var_ias'))
+    
+    par_tab = do.call(rbind.data.frame, par_tab)
+    colnames(par_tab) = c('label', 'par')
+    
+
+    par_tab_list = list()
+    set.seed(12345)
+    v1 = rnorm(n_groups, mean = 0, sd = 1)
+    v2 = rnorm_pre(v1, mu = 0, sd = 1, r = cov_vec[K], empirical = T)
+    means = cbind.data.frame(v1,v2)
+    
     par_tab$par[par_tab$label == 'var_ias'] = cov(means)[1,1]
     par_tab$par[par_tab$label == 'var_iHE'] = cov(means)[2,2]
     
@@ -55,67 +112,96 @@ simWB = function(cov_vec = cov_vec_,
       
     }
     
+    # adding within cor
     synt_list_fin = list()
     for (N_COR in seq_along(cov_vec)){
       synt_list_fin[[N_COR]] = lapply(synt_list,
                                   function(x) gsub('NA', cov_vec[N_COR], x))
     }
     
-    n_samples = length(synt_list)
-    N = 50
-    seed_vec = seq(1, N, 1)
-    draws = 100
-    
+    # true long-run effect for data generation
+    synt_list_generate = synt_list_fin
+    for (N_COR in seq_along(cov_vec)){
+      synt_list_generate[[N_COR]] = lapply(synt_list_fin[[N_COR]],
+                                           function(x) gsub('b_HEas', '(-0.2)', x))
+      }
+
+
+    # gen data
     Output = vector(mode = 'list', length = length(cov_vec))
     for (i in seq_along(Output)){
-      Output[[i]] = vector(mode = 'list', length = n_samples)
+      Output[[i]] = vector(mode = 'list', length = n_groups)
     }
     
+    draws = 6
+    seed_vec = seq(1, n_groups, 1)
+    
+    # generate data with given between and within cors 
     for (N_COR in seq_along(cov_vec)){
-      for (n_samples in 1:n_samples){
-        Output[[N_COR]][[n_samples]] = sim(draws, 
-                                           model = synt_list_fin[[N_COR]][[n_samples]],
-                                           dataOnly = T,
-                                           seed = seed_vec[n_samples],
-                                           n = N,
-                                           generate = synt_list_fin[[N_COR]][[n_samples]],
-                                           estimator = "mlr",
-                                           orthogonal = T,
-                                           multicore = T,
-                                           numProc = 8)
+      for (n_group in 1:n_groups){
+        Output[[N_COR]][[n_group]] = simsem::sim(draws, 
+                                                 model = synt_list_fin[[N_COR]][[n_group]],
+                                                 dataOnly = T,
+                                                 seed = seed_vec[n_group],
+                                                 n = N,
+                                                 generate = synt_list_generate[[N_COR]][[n_group]],
+                                                 estimator = "mlr",
+                                                 orthogonal = T,
+                                                 multicore = T,
+                                                 numProc = 12
+                                         )
       }
     }
+    
+   
+    insp = summaryParam(Output[[1]][[1]])
+    
+    #
+    # est true effects
+    
 
     lst_X_aggregated = vector(mode = 'list', length = length(Output))
     for (i in seq_along(lst_X_aggregated)){
-      lst_X_aggregated[[i]] = vector(mode = 'list', length = n_samples)
+      lst_X_aggregated[[i]] = vector(mode = 'list', length = draws)
     }
     lst_X_original = lst_X_aggregated
+    lst_XY_aggregated = lst_X_aggregated
     for (j in 1:length(Output)){
           for (i in 1:length(Output[[1]][[1]])){
-            lst_X_original[[j]][[i]] = do.call(rbind.data.frame,
-                                               lapply(Output[[j]], function(lst) lst[[i]]))
-            lst_X_aggregated[[j]][[i]] = cbind.data.frame(
-              lst_X_original[[j]][[i]],
-              LAD21CD = rep(1:N, each = n_samples)) %>%
+            lst_X_original[[j]][[i]] = cbind.data.frame(do.call(rbind.data.frame,
+                                               lapply(Output[[j]],
+                                                      function(lst) lst[[i]])),
+                                             LAD21CD = rep(1:n_groups, each = N))
+            
+            lst_X_aggregated[[j]][[i]] = 
+              lst_X_original[[j]][[i]] %>%
         group_by(LAD21CD) %>%
         mutate(across(starts_with('as'), 
                       function(x) mean(x)))
+            
+           lst_XY_aggregated[[j]][[i]] = lst_X_original[[j]][[i]] %>%
+             group_by(LAD21CD) %>% dplyr::summarise_all(.funs = mean)
       }
     }
+    #cor(lst_X_aggregated[[1]][[3]])
+    
+    
+    # simulating
     
     result = list()
     
-    n_sim = 1
-    for (sym_data in lst_X_aggregated){
-          result[[n_sim]] = sim(seed = 12345, 
-                                model = fit_sim,
-                                rawData = sym_data,
-                                multicore = T,
-                                numProc = 8)
-          n_sim = n_sim + 1
-          cat("n_sim:", n_sim, "\n")
-    }
+
+      n_sim = 1
+      for (sym_data in lst_X_aggregated){
+        result[[n_sim]] = simsem::sim(seed = 12345, 
+                                      model = fit_sim,
+                                      rawData = sym_data,
+                                      multicore = T,
+                                      numProc = 12)
+        n_sim = n_sim + 1
+        cat("n_sim:", n_sim, "\n")
+      }
+
 
     fin[[K]][[1]] = result
     fin[[K]][[2]] = lst_X_original
@@ -132,12 +218,44 @@ simWB = function(cov_vec = cov_vec_,
   
 }
 
+
 tic()
-sim_result = simWB(cov_vec = cov_vec_)
+sim_result_hlm = simWB(type = 'hlm')
+toc()
+gc()
+
+# mean_s_HE = -0.2, long = 0.1, short = -0.1, cov_vec = c(-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6)
+tic()
+sim_result2 = simWB()
+toc()
+gc()
+
+# mean_s_HE = -0.2, long = 0.1, short = 0.1, cov_vec = c(-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6)
+tic()
+sim_result3 = simWB()
+toc()
+gc()
+
+# mean_s_HE = -0.2, long = 0.2, short = 0.2, cov_vec = c(-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6)
+tic()
+sim_result4 = simWB()
+toc()
+gc()
+
+# mean_s_HE = -0.2, long = 0.2, short = 0.2, cov_vec = c(-0.9, -0.7, -0.5, -0.3, 0, 0.3, 0.5, 0.7, 0.9)
+tic()
+sim_result5 = simWB()
+toc()
+gc()
+
+# mean_s_HE = 0.2, long = 0.2, short = 0.2, cov_vec = c(-0.9, -0.7, -0.5, -0.3, 0, 0.3, 0.5, 0.7, 0.9)
+tic()
+sim_result6 = simWB()
 toc()
 gc()
 
 
+## extracting parameters 
 flattenList <- function(x, depth = 0, name = NULL, lab = F) {
   res <- list()
   for (i in seq_along(x)) {
@@ -157,66 +275,20 @@ flattenList <- function(x, depth = 0, name = NULL, lab = F) {
 }
 
 
-true_data = vector(mode = 'list', length = length(sim_result))
-for (i in seq_along(true_data)){
-  true_data[[i]] = vector(mode = 'list', length = length(sim_result))
-}
-
-for (i in 1:length(sim_result)) {
-  for (j in 1:length(sim_result[[1]][[2]])) {
-    true_data[[i]][[j]] <- sim_result[[i]][[2]][[j]][[1]]
-  }
-}
-
-true_models = true_data
-for (i in 1:length(true_data)) {
-  for (j in 1:length(true_data[[1]])) {
-    true_data[[i]][[j]] = cbind.data.frame(true_data[[i]][[j]], 
-                                           LAD21CD = rep(1:100, each = 30))
-    true_models[[i]][[j]] = sem(syntax_sim,
-                                 data = true_data[[i]][[j]],
-                                 estimator = "mlr",
-                                 cluster = 'LAD21CD',
-                                 orthogonal = T)
-    
-    true_models[[i]][[j]] = tidy( true_models[[i]][[j]]) %>% 
-      filter(label %in% c('b_HEas', 'd_HEas')) %>%
-      slice(1:2) %>% dplyr::select(label, estimate, std.error) %>%
-      mutate(label = ifelse(label == 'b_HEas', 'long', 'short'))
-    
-    print(j)
-  }
-  print(i)
-}
-
-names(true_models) = cov_vec_
-for (i in seq_along(true_models)){
-  names(true_models[[i]]) = cov_vec_
-}
-true_models = flattenList(true_models, lab = F)
-true_models_df = do.call(rbind.data.frame, true_models)
-true_models_df = cbind(true_models_df, vec_names = rownames(true_models_df))
-true_models_df$vec_names = substr(true_models_df$vec_names, 1,
-                                  nchar(true_models_df$vec_names)-2)
-true_models_df %<>%
-  separate(vec_names, into = c("Between", "Within"), sep = "_")
-true_models_df$Between = as.numeric(true_models_df$Between)
-true_models_df$Within = as.numeric(true_models_df$Within)
-rownames(true_models_df) = NULL
-
 
 ## function to extract parameters for plotting
 extract_heatmap_data = function(lst_data,
                                 params,
                                 param_name,
                                 param_comb_names,
-                                naive_model){
+                                long_val,
+                                short_val){
   
   
   for (i in seq_along(lst_data)){
     names(lst_data[[i]][[1]]) = param_comb_names
   }
-  
+
   extract_params = function(lst,
                             params2 = params){
     sumtab = summaryParam(lst)
@@ -249,41 +321,57 @@ extract_heatmap_data = function(lst_data,
   sumtab_df$label = ifelse(is.na(sumtab_df$label), param_name, sumtab_df$label)
   
   ## adding the naive model parameters and compute bias
-  sumtab_df %<>% left_join(naive_model) %>%
-    mutate(`bias, %` = (estimate - `Estimate Average`)/estimate)%>%
-    #mutate(`bias, %` = (`Estimate Average` - estimate)/`Estimate Average`)%>%
+  sumtab_df = sumtab_df %>% 
+    mutate(`bias, %` = ifelse(label == 'long',
+                              (`Estimate Average` - long_val)/long_val,
+                              (`Estimate Average` - short_val)/short_val)) %>%
     mutate_if(is.numeric, ~ round(., 4))
   
   return(sumtab_df)
 }
 ## applying the function
-sumtab_rcgclm = extract_heatmap_data(lst_data = sim_result,
+sumtab_rcgclm = extract_heatmap_data(lst_data = sim_result6,
                                      params = c('b_HEas <- (HE2~as1)',
                                                 'd_HEas <- (HE2~e_as1)'),
                                      param_name = c('long', 'short'),
-                                     naive_model = true_models_df,
-                                     param_comb_names = cov_vec_)
+                                     param_comb_names = cov_vec,
+                                     long_val = 0.2,
+                                     short_val = 0.2)
+sumtab_rcgclm = extract_heatmap_data(lst_data = sim_result4,
+                                     params = c('b_HEHE <- (HE2~HE1)',
+                                                'd_HEHE <- (HE2~e_HE1)'),
+                                     param_name = c('long', 'short'),
+                                     param_comb_names = cov_vec,
+                                     long_val = 0.05,
+                                     short_val = 0.2)
+sumtab_rcgclm = extract_heatmap_data(lst_data = sim_result4,
+                                     params = c('b_asas <- (as2~as1)',
+                                                'd_asas <- (as2~e_as1)'),
+                                     param_name = c('long', 'short'),
+                                     param_comb_names = cov_vec,
+                                     long_val = 0.2,
+                                     short_val = 0.01)
+sumtab_rcgclm$Between = as.factor(round(sumtab_rcgclm$Between, 2))
+sumtab_rcgclm$Within = as.factor(round(sumtab_rcgclm$Within, 2))
 
 ## inspecting
 sumtab_rcgclm_long = sumtab_rcgclm %>% filter(label == 'long') %>% arrange(`bias, %`)
 sumtab_rcgclm_short = sumtab_rcgclm %>% filter(label == 'short') %>% arrange(`bias, %`)
+summary(sumtab_rcgclm_long$`bias, %`)
+summary(sumtab_rcgclm_short$`bias, %`)
 
 ## plotting
-
-library(gridExtra)
-library(cowplot)
-library(hrbrthemes)
 
 # rcgclm 
 ggplot(sumtab_rcgclm_long, aes(Within, Between, fill = `bias, %`)) + 
   geom_tile() +
-  scale_fill_gradient2(low="red", high="darkgreen", mid = 'white',
-                       limits = c(-0.7, 0.7)) +
-  hrbrthemes::theme_ipsum()
+  scale_fill_gradient2(low="red", high="darkgreen", mid = 'white') +
+theme_ipsum()
 
 ggplot(sumtab_rcgclm_short, aes(Within, Between, fill = `bias, %`)) + 
   geom_tile() +
-  scale_fill_gradient2(low="red", high="darkgreen", mid = 'white',
-                       limits = c(-0.7, 0.7)) +
+  scale_fill_gradient2(low="red", high="darkgreen", mid = 'white'#,
+                       #limits = c(-1, 1)
+                       )+
   theme_ipsum()
 

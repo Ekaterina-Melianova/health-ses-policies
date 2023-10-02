@@ -248,7 +248,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
       dplyr::select(x,y) 
     
     Cov_Rand = rand %>%
-      dplyr::mutate(cov_is = glue('{x} ~~ covar_{x}.{y}*{y}')) %>%
+      dplyr::mutate(cov_is = glue('{x} ~~ cov_{x}.{y}*{y}')) %>%
       pull(cov_is) %>%
       glue_collapse("\n")
   } else {
@@ -1675,17 +1675,17 @@ loadLists = function(site = sites, year_seq = 2007:2020,
 DetrendPanel = function(vars = NULL, id = id, time = year, data = df){
   detrended = list()
   for (i in vars){
-    detrended[[which(vars == i)]] = left_join(moderndive::get_regression_points(lm(as.formula(paste(i, '~ id*time')), data = df)) %>% 
-                                                select(id, time, residual),
-                                              unique(moderndive::get_regression_points(lm(as.formula(paste(i, '~ id')), data = df)) %>% 
-                                                       select(id, grep('hat', colnames(.))))) %>% 
-      rowwise() %>% 
+    detrended[[which(vars == i)]] = left_join(moderndive::get_regression_points(lm(as.formula(paste(i, '~ id*time')), data)) %>% 
+                                                dplyr::select(id, time, residual),
+                                              base::unique(moderndive::get_regression_points(lm(as.formula(paste(i, '~ id')), data)) %>% 
+                                                       dplyr::select(id, grep('hat', colnames(.)))), by = 'id') %>% 
+      dplyr::rowwise() %>% 
       dplyr::mutate(!!paste0(i, '') :=  sum(c(!!as.name(paste0(i, '_hat')), residual))) %>%
-      select(c(id, time, !!paste0(i, '')))
+      dplyr::select(c(id, time, !!paste0(i, '')))
+  print(i)
   }
   
-  out = purrr::reduce(detrended, full_join)
-  print(i)
+  out = purrr::reduce(detrended, left_join)
   return(out)
 }
 
