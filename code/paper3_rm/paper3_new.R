@@ -187,32 +187,13 @@ cor(temp3)
 cor(lst_X_aggregated[[1]][[3]])
 
 fit_temp1 = sem(syntax_sim,
-                data = lst_X_original[[1]][[2]],
+                data = temp1,
                 estimator = "mlr",
-                cluster = 'LAD21CD',
+                cluster = 'Group',
                 orthogonal = T
                 )
 summary(fit_temp1)
 varTable(fit_temp1)
-
-cor(lst_X_original[[1]][[2]]$HE1, lst_X_original[[1]][[2]]$as1)
-cor(lst_X_original[[1]][[2]]$HE2, lst_X_original[[1]][[2]]$as2)
-cor(lst_X_original[[1]][[2]]$HE3, lst_X_original[[1]][[2]]$as3)
-cor(lst_X_original[[1]][[2]]$HE4, lst_X_original[[1]][[2]]$as4)
-cor(lst_X_original[[1]][[2]]$HE5, lst_X_original[[1]][[2]]$as5)
-
-cor(lst_XY_aggregated[[1]][[3]]$HE1, lst_XY_aggregated[[1]][[3]]$as1)
-cor(lst_XY_aggregated[[1]][[3]]$HE2, lst_XY_aggregated[[1]][[3]]$as2)
-cor(lst_XY_aggregated[[1]][[3]]$HE3, lst_XY_aggregated[[1]][[3]]$as3)
-cor(lst_XY_aggregated[[1]][[3]]$HE4, lst_XY_aggregated[[1]][[3]]$as4)
-cor(lst_XY_aggregated[[1]][[3]]$HE5, lst_XY_aggregated[[1]][[3]]$as5)
-
-cor(Output[[1]][[2]][[1]]$HE1, Output[[1]][[2]][[1]]$as1)
-cor(Output[[1]][[2]][[1]]$HE2, Output[[1]][[2]][[1]]$as2)
-cor(Output[[1]][[2]][[1]]$HE3, Output[[1]][[2]][[1]]$as3)
-cor(Output[[1]][[2]][[1]]$HE4, Output[[1]][[2]][[1]]$as4)
-cor(Output[[1]][[2]][[1]]$HE5, Output[[1]][[2]][[1]]$as5)
-Output[[1]][[1]][[1]]
 
 fit_temp2 = sem(syntax_sim,
                 data = Output[[1]][[1]][[1]],

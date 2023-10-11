@@ -125,12 +125,12 @@ simulateDataset = function(df, name_spending, name_health, corr_sh, autocorr_s){
 ## ----------------------------------------------------------------------------
 #
 ## LOAD DATASET
-#df.full = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
-#
-## PREPROCESSING
-#df.full = df.full %>% ungroup()
-#df.full$social_care_adult = df.full$pop * df.full$social_care_adult
-#df.full$law_order = df.full$pop * df.full$law_order
+df.full = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
+
+# PREPROCESSING
+df.full = df.full %>% ungroup()
+df.full$social_care_adult = df.full$pop * df.full$social_care_adult
+df.full$law_order = df.full$pop * df.full$law_order
 #
 ## ~~~~~~~~~~~~~~~~~ EXAMPLES
 #

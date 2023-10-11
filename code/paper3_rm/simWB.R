@@ -123,7 +123,7 @@ simWB = function(cov_vec = cov_vec_,
     synt_list_generate = synt_list_fin
     for (N_COR in seq_along(cov_vec)){
       synt_list_generate[[N_COR]] = lapply(synt_list_fin[[N_COR]],
-                                           function(x) gsub('b_HEas', '(-0.2)', x))
+                                           function(x) gsub('b_HEas', '0', x))
       }
 
 
@@ -154,7 +154,7 @@ simWB = function(cov_vec = cov_vec_,
     }
     
    
-    insp = summaryParam(Output[[1]][[1]])
+    #insp = summaryParam(Output[[1]][[1]])
     
     #
     # est true effects
