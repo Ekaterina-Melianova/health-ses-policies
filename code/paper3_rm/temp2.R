@@ -1,15 +1,56 @@
 
-eta = rep(.7, 2*t)
+list_wb_comb_2 = list()
+for(i in 1:nrow(bw_grid)){
+  
+  # between group
+  xx_bg = generate_autocorr_mat(k = 0.05)
+  
+  yy_bg = generate_autocorr_mat(k = 0.1)
+  
+  xy_bg = matrix(data = bw_grid[i,2], nrow = t, ncol = t)
+  #xy_bg = generate_matrix(bw_grid[i,2])
+  yx_bg = t(xy_bg)
+  
+  rbg = rbind(cbind(xx_bg, xy_bg), cbind(yx_bg, yy_bg))
+  
+  # within group
+  xx_wg = generate_autocorr_mat(k = 0.05)
+  
+  yy_wg = generate_autocorr_mat(k = 0.1)
+  
+  xy_wg = matrix(data = bw_grid[i,1], nrow = t, ncol = t)
+  #xy_wg = generate_matrix(bw_grid[i,1])
+  yx_wg = t(xy_wg)
+  
+  rwg = rbind(cbind(xx_wg, xy_wg), cbind(yx_wg, yy_wg))
+  
+  list_wb_comb_2[[i]] = list(rbg, rwg, rep(bw_grid[i,'eta'], 2*t))
+}
+
+# 0.3 0.6 0.7 0.8 0.9
+eta = rep(.75, 2*t)
 test1 = as.data.frame(psych::sim.multilevel(nvar = 2*t,
-                                           ncases = 5000,
+                                           ncases = 50000,
                                            ngroups = 100,
-                                           rbg = list_wb_comb[[39]][[1]],
-                                           rwg = list_wb_comb[[39]][[2]],
-                                           eta = eta)$xy)
+                                           rbg = list_wb_comb[[38]][[1]],
+                                           rwg = list_wb_comb[[38]][[2]],
+                                           eta = list_wb_comb[[38]][[3]])$xy)
 
 
 colnames(test1) = c('Group', paste0('HE', 1:7), paste0('SP', 1:7))
 
+stat_test1 = psych::statsBy(test1 , 'Group')
+stat_test1$rbg[8:14,1:7]
+stat_test1$rwg[8:14,1:7]
+stat_test1$etawg
+stat_test1$etabg
+stat_test1$ICC1
+stat_test1$ICC2
+
+library(multilevel)
+waba(test1$HE1, test1$SP1, test1$Group)
+
+####
 
 
 test2 = test1 %>%
@@ -17,16 +58,27 @@ test2 = test1 %>%
   mutate(across(starts_with('SP'), 
                 function(x) mean(x)))
 
-#cor(test1$SP1, test1$HE1)
+test3 = test1 %>%
+  group_by(Group) %>%
+  mutate(across(starts_with('SP')|starts_with('HE'), 
+                function(x) mean(x)))
 
-#within_cor = test1 %>%
-#  group_by(Group) %>%
-#  summarise(cor = cor(SP1, HE1))
-#mean(within_cor$cor)
+cor(test1$SP1, test1$HE1)
 
-#cor(test2$SP1, test2$HE1)
-#cor(test3$SP1, test3$HE1)
-#cor(test1)
+within_cor = test1 %>%
+  group_by(Group) %>%
+  summarise(cor = cor(SP1, HE1))
+mean(within_cor$cor)
+
+cor(test3$SP1, test3$HE1)
+cor(test2$SP1, test2$HE1)
+
+#mean(c(cor(test3$SP1, test3$HE1), mean(within_cor$cor)))
+wb = waba(test1$HE1, test1$SP1, test1$Group)
+sqrt(wb$Cov.Theorem[,2])*sqrt(wb$Cov.Theorem[,3])*cor(test3$SP1, test3$HE1)
+
+# ICC is low -> mean(bw_cor, within_cor)
+# ICC is high -> bw_cor
 
 test1 = ToWide(test1)
 test2 = ToWide(test2)
