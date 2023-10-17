@@ -642,8 +642,8 @@ params_missp_rcgclm = extract_simsem_params(results_missp_rcgclm, enm_rcgclm, '.
 params_true_rcclpm = extract_simsem_params(results_true_rcclpm, enm_rcclpm, '.true')
 params_missp_rcclpm = extract_simsem_params(results_missp_rcclpm, enm_rcclpm, '.missp')
 
-params_true_rcgclm_norev = extract_simsem_params(results_true_rcgclm_norev, enm_rcgclm, '.true')
-params_missp_rcgclm_norev = extract_simsem_params(results_missp_rcgclm_norev, enm_rcgclm, '.missp')
+#params_true_rcgclm_norev = extract_simsem_params(results_true_rcgclm_norev, enm_rcgclm, '.true')
+#params_missp_rcgclm_norev = extract_simsem_params(results_missp_rcgclm_norev, enm_rcgclm, '.missp')
 
 # between
 params_bw_hlm = extract_simsem_params(Filter(function(x) !is.null(x), results_bw_hlm), enm_hlm, '.bw')
@@ -670,7 +670,8 @@ plot_simsem = function(true = params_true_rcgclm,
                        plot = T,
                        limits = c(-80, 80),
                        effect_to_plot,
-                       bias = 'bias_rel'){
+                       bias = 'bias_rel',
+                       title = 'RC-GCLM: Long-Run'){
   
   params_bw = cbind.data.frame(bw,
                                grid_bw[,c('Between', 'eta')] %>% slice(rep(1:n(),
@@ -692,26 +693,26 @@ plot_simsem = function(true = params_true_rcgclm,
   ## plotting
   
   p = ggplot(params_all %>%
-               dplyr::filter(effect_names.true == effect_to_plot),
-             aes(as.factor(Between), as.factor(Within), fill = .data[[bias]])) + 
-    geom_tile() +
+           dplyr::filter(effect_names.true == effect_to_plot),
+         aes(x = as.factor(Between), y = as.factor(Within), fill = .data[[bias]])) + 
+    geom_tile(color = "black", size = 0.3) +
+    
+    # Add geom_text to overlay the bias value on each tile
+    geom_text(aes(label = sprintf("%.2f", .data[[bias]])), size = 4, color = "black") +
+    
     scale_fill_gradient2(low = brewer.pal(11, "RdBu")[1], # Red
                          high = brewer.pal(11, "RdBu")[11], # Blue
-                         mid = "white",# Red-ish
+                         mid = "white", # White
                          midpoint = 0,
                          name = "Relative Bias",
-                        limits = limits) +
-    #scale_fill_viridis_c(option = "D",
-    #                     begin = 0.1,
-    #                     end = 0.9,
-    #                     direction = -1,
-    #                     name = "Relative Bias",
-    #                     limits = limits) +
+                         limits = limits) +
     facet_wrap(~ eta, labeller = as_labeller(facet_titles)) +
     labs(x = "Between Correlation", y = "Within Correlation") +
-    theme_ipsum_tw()  +
+    theme_ipsum_tw() +
     theme(axis.title = element_text(size = 20),
-          axis.text = element_text(size = 24))
+          axis.text = element_text(size = 24))+
+    labs(title = title)
+  
   
   if(plot){
     return(p)
@@ -721,22 +722,28 @@ plot_simsem = function(true = params_true_rcgclm,
 }
 
 
-plot_simsem(effect_to_plot = 'long_cross_SP', bias = 'bias_rel')
+plot_simsem(effect_to_plot = 'long_cross_SP',
+            bias = 'bias_rel',
+            title = 'RC-GCLM: Long-Run')
 ggsave(paste0(outwd, "/bias_rel_rcgclm_long.jpeg"), width = 25, height = 18, units = 'cm') 
 
-plot_simsem(effect_to_plot = 'short_cross_SP', bias = 'bias_rel')
+plot_simsem(effect_to_plot = 'short_cross_SP',
+            bias = 'bias_rel',
+            title = 'RC-GCLM: Short-Run')
 ggsave(paste0(outwd, "/bias_rel_rcgclm_short.jpeg"), width = 25, height = 18, units = 'cm') 
 
 plot_simsem(true = params_true_rcclpm,
             missp = params_missp_rcclpm,
             effect_to_plot = 'cross_SP',
-            bias = 'bias_rel')
+            bias = 'bias_rel',
+            title = 'RC-CLPM')
 ggsave(paste0(outwd, "/bias_rel_rcclpm.jpeg"), width = 25, height = 18, units = 'cm') 
 
 plot_simsem(true = params_true_hlm,
             missp = params_missp_hlm,
             effect_to_plot = 'SP',
-            bias = 'bias_rel')
+            bias = 'bias_rel',
+            title = 'Multilevel Model')
 ggsave(paste0(outwd, "/bias_rel_hlm.jpeg"), width = 25, height = 18, units = 'cm') 
 
 ## bias relative to a between model
@@ -764,7 +771,7 @@ ggsave(paste0(outwd, "/bias_rel_hlm.jpeg"), width = 25, height = 18, units = 'cm
 
 
 ##
-sub = as.data.table(data_sim[["0_0.4_0.9"]]) 
+sub = as.data.table(data_sim[["0_0.4_0.4"]]) 
 sub %<>% filter(sample_index %in% 1)
 
 stat1 = psych::statsBy(sub %>% filter(sample_index == 1) %>%
@@ -792,6 +799,8 @@ sub3 = sub %>%
   dplyr::summarise(across(starts_with('SP')|starts_with('HE'), 
                 function(x) mean(x)))
 cor(sub$SP1, sub$HE1)
+
+sd(sub3$SP1)
 
 within_cor = sub %>%
   group_by(Group) %>%
@@ -850,3 +859,79 @@ params_all %>%
   dplyr::filter(eta == '0.9' &# Within == 0 & 
                   effect_names.true == 'SP') %>%
   select(bias_rel, `Estimate Average.true`, `Estimate Average.missp`, Between, Within)
+
+
+
+
+
+
+
+
+
+
+library(viridis)
+
+sub = as.data.table(data_sim[["-0.8_0.8_0.4"]]) 
+sub %<>% filter(sample_index %in% 3)
+sub_long = ToLong(sub,
+                  all_ids = c("Group", "id", "sample_index"))
+sub_long %<>% group_by(id) %>%
+  mutate(lag = lag(SP))
+
+sub_long2 = sub_long %>%
+  group_by(Group, time) %>%
+  dplyr::mutate(across(starts_with('SP'), 
+                          function(x) mean(x)))
+
+ggplot(sub_long %>% filter(Group %in% c(5:9) #& 
+  #id %in% 1:50
+  ),
+  aes(x = SP, y = HE)) +
+  geom_point(aes(colour = as.factor(Group)), size = 2) +
+  scale_colour_viridis(discrete = TRUE) +
+  geom_smooth(aes(x = SP, y = HE,
+                  colour = time,
+                  group = id),
+              method = "lm", se = FALSE,
+              color = 'grey',
+              linewidth = 0.6)+
+  theme_minimal() + ylim(-2.5,2.5)
+
+ggplot(sub_long %>% filter(#Group %in% c(5:6) & 
+  id %in% 1:50),
+  aes(x = lag, y = HE)) +
+  geom_point(aes(colour = as.factor(time)), size = 2) +
+  scale_colour_viridis(discrete = TRUE) +
+  geom_smooth(aes(x = lag, y = HE,
+                  colour = time,
+                  group = id),
+              method = "lm", se = FALSE,
+              color = 'grey',
+              linewidth = 0.6)+
+  theme_minimal() + ylim(-2.5,2.5)
+
+
+ggplot(sub_long2 %>% filter(Group %in% c(5) ),
+       aes(x = time, y = SP)) +
+  geom_point(aes(colour = as.factor(Group)), size = 2) +
+  scale_colour_viridis(discrete = TRUE) +
+  geom_smooth(aes(x = time, y = SP,
+                  colour = time,
+                  group = id),
+              method = "lm", se = FALSE,
+              color = 'grey',
+              linewidth = 0.6)+
+  theme_minimal() + ylim(-2.5,2.5)
+
+theme(legend.position = "none") + 
+  xlab('Spending, £ per capita') +
+  ylab('SAMHI, Z-scores') + 
+  ggtitle('Spending Original')+ 
+  theme(axis.text = element_text(size = 24, color = 'darkgrey')) + 
+  theme(axis.title = element_text(size = 24, color = 'darkgrey'))  +
+  theme(
+    legend.key.size = unit(1, "cm"),  
+    legend.text = element_text(size = 22),
+    legend.title = element_text(size = 22)  
+  ) +
+  theme(plot.title = element_text(color = "black", size = 26, hjust = 0.5))
