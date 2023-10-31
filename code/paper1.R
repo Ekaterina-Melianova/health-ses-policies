@@ -13,13 +13,13 @@ library(data.table)
 library(tidyr)
 library(broom)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
+source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
 options(max.print=3900)
 
 # pre-processing
 
 # loading the data
-df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df.rds')
+df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
 
 # a dataset for descriptive stat
 df_before_scaling = df
@@ -62,8 +62,8 @@ df_lv = as.data.frame(na.omit(df_lv))
 summary(df_lv)
 
 # saving
-saveRDS(df_lv, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
-saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_hlm.RDS')
+#saveRDS(df_lv, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
+#saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_hlm.RDS')
 
 #par(mfrow=c(2,2))
 # quick dist 
@@ -105,7 +105,7 @@ gc()
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
                                no_slopes = no_slopes,
-                               cor = T, resid_stationary = F)
+                               cor = F, resid_stationary = T)
 riclpm_fit = sem(riclpm_syntax,
                  data = df_lv,
                  estimator = "mlr",
@@ -114,6 +114,8 @@ riclpm_fit = sem(riclpm_syntax,
 fm_riclpm_fit = fitmeasures(riclpm_fit, measures)
 #summary(riclpm_fit, std=T, ci = T)
 gc()
+
+m_lv_riclpm = broom::tidy(riclpm_fit)
 
 # # 2. RC-CLPM
 # rcclpm_syntax = RC_GCLM_syntax(model = 'reclpm')
@@ -143,7 +145,7 @@ gc()
 
 # 4. RC-GCLM
 rcgclm_syntax = RC_GCLM_syntax(model = 'regclm',
-                               cor = T)
+                               cor = F)
 rcgclm_fit = sem(rcgclm_syntax,
                  data = df_lv, 
                  estimator = "mlr",
@@ -154,6 +156,8 @@ beepr::beep()
 #summary(rcgclm_fit, std=T, ci = T)
 fm_rcgclm_fit = fitmeasures(rcgclm_fit, measures)
 gc()
+
+m_lv = broom::tidy(rcgclm_fit)
 
 anova(riclpm_fit, rcgclm_fit)
 anova(only_growth_fit, rcgclm_fit)
