@@ -15,6 +15,8 @@ library(parallel)
 library(doParallel)
 library(tictoc)
 library(simsem)
+library(foreach)
+library(doSNOW)
 
 library(gridExtra)
 library(cowplot)
@@ -23,9 +25,9 @@ library(RColorBrewer)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
 df_lv = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df_lv.RDS')
-df_lv %<>% dplyr::rename(!!!setNames(c('LAD21CD', paste0("as", 1:7)),
-                              c('ID', paste0("SP", 1:7)))) %>%
-  dplyr::select('ID', starts_with('SP'), starts_with('HE'))
+df_lv %<>% dplyr::rename(!!!setNames(c('LAD21CD', paste0("as", 1:7), paste0("HE", 1:7)),
+                              c('ID', paste0("X", 1:7), paste0("Y", 1:7)))) %>%
+  dplyr::select('ID', starts_with('X'), starts_with('Y'))
 
 # functions
 
@@ -60,7 +62,7 @@ ToLong = function(dat,
 
 aggregate_x = function(data) {
   dt1 = setDT(data)
-  cols = grep("^S", names(dt1))
+  cols = grep("^X", names(dt1))
   dt1[, (cols) := lapply(.SD, mean), by = "ID", .SDcols = cols]
   return(dt1)
 }
@@ -77,7 +79,21 @@ summarise_simultation = function(true, missp, pars_grid_current){
     summary_out[[i]] = summaryParam(missp[[i]],
                                     detail = TRUE,
                                     digits = 3) %>%
-      rownames_to_column('reg_pars')
+      rownames_to_column('reg_pars') %>%
+      dplyr::mutate(SE_ratio = `Average SE`/`Estimate SD`)
+    
+      fit_ind = as.data.frame(t(colMeans(inspect(missp[[i]], 'fit')[,c(
+        "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
+                                                    "aic",
+                                                    "bic",
+                                                    "rmsea.scaled",
+                                                    "cfi.scaled", 
+                                                    "tli.scaled", 
+                                                    "srmr",
+                                                    'aic',
+                                                    'bic')])))
+      summary_out[[i]] = cbind(summary_out[[i]], fit_ind %>% slice(rep(1:n(), nrow(summary_out[[i]]))))
+
   }
   
   summary_out = cbind(do.call(rbind.data.frame, summary_out),
@@ -91,20 +107,20 @@ summarise_simultation = function(true, missp, pars_grid_current){
   return(summary_out)
 }
 
-#icc_range_ = c(0.1, 0.3, 0.5, 0.7, 0.9)
-icc_range_ = c(0.05, 0.35, 0.65, 0.85)
-#icc_range_ = c(0.1, 0.5,  0.9)
+#icc_range_ = c(0.05, 0.25, 0.45, 0.65, 0.85)
+icc_range_ = c(0.1, 0.4, 0.7)
+
 create_L1_L2 = function(par_tab,
                         m_est,
                         icc_range = icc_range_,
-                        evarSP,
-                        var_iSP,
-                        var_sSP,
-                        varSP,
-                        evarHE,
-                        var_iHE,
-                        var_sHE,
-                        varHE) {
+                        evarX,
+                        var_iX,
+                        var_sX,
+                        varX,
+                        evarY,
+                        var_iY,
+                        var_sY,
+                        varY) {
   
   # Loop through parameter table and replace values in the model
   m_L1 = m_est
@@ -113,46 +129,46 @@ create_L1_L2 = function(par_tab,
       glue_collapse("\n")
   }
   
-  m_L1 = gsub('evarSP', evarSP, m_L1)
-  m_L1 = gsub('var_iSP', var_iSP, m_L1)
-  m_L1 = gsub('var_sSP', var_sSP, m_L1)
+  m_L1 = gsub('evarX', evarX, m_L1)
+  m_L1 = gsub('var_iX', var_iX, m_L1)
+  m_L1 = gsub('var_sX', var_sX, m_L1)
   
-  m_L1 = gsub('evarHE', evarHE, m_L1)
-  m_L1 = gsub('var_iHE', var_iHE, m_L1)
-  m_L1 = gsub('var_sHE', var_sHE, m_L1)
+  m_L1 = gsub('evarY', evarY, m_L1)
+  m_L1 = gsub('var_iY', var_iY, m_L1)
+  m_L1 = gsub('var_sY', var_sY, m_L1)
   
-  m_L1 = gsub('varSP', varSP, m_L1)
-  m_L1 = gsub('varHE', varHE, m_L1)
+  m_L1 = gsub('varX', varX, m_L1)
+  m_L1 = gsub('varY', varY, m_L1)
   
   
-  withinSP = sum(evarSP, var_iSP, var_sSP, varSP, na.rm = T)
-  withinHE = sum(evarHE, var_iHE, var_sHE, varHE, na.rm = T)
+  withinX = sum(evarX, var_iX, var_sX, varX, na.rm = T)
+  withinY = sum(evarY, var_iY, var_sY, varY, na.rm = T)
   
-  betweenSP = c()
+  betweenX = c()
   for (i in seq_along(icc_range)){
-    betweenSP[i] = withinSP*icc_range[i]/(1-icc_range[i])
+    betweenX[i] = withinX*icc_range[i]/(1-icc_range[i])
   }
-  betweenHE = withinHE*0.35/(1-0.35)
+  betweenY = withinY*0.35/(1-0.35)
   
   # Loop through variable vector and create a list of models with replaced values
   
   
-  m_L2 = lapply(betweenSP, function(x) {
+  m_L2 = lapply(betweenX, function(x) {
     m_L2 = m_est
     for (i in 1:nrow(par_tab)) {
       m_L2 = gsub(par_tab[i,1], par_tab[i,2], m_L2) %>%
         glue_collapse("\n")
     }  
       
-    m_L2 = gsub('evarSP', x*evarSP/withinSP, m_L2)
-    m_L2 = gsub('var_iSP', x*var_iSP/withinSP, m_L2)
-    m_L2 = gsub('var_sSP', x*var_sSP/withinSP, m_L2)
-    m_L2 = gsub('varSP', x*varSP/withinSP, m_L2)
+    m_L2 = gsub('evarX', x*evarX/withinX, m_L2)
+    m_L2 = gsub('var_iX', x*var_iX/withinX, m_L2)
+    m_L2 = gsub('var_sX', x*var_sX/withinX, m_L2)
+    m_L2 = gsub('varX', x*varX/withinX, m_L2)
     
-    m_L2 = gsub('evarHE', betweenHE*evarHE/withinHE, m_L2)
-    m_L2 = gsub('var_iHE', betweenHE*var_iHE/withinHE, m_L2)
-    m_L2 = gsub('var_sHE', betweenHE*var_sHE/withinHE, m_L2)
-    m_L2 = gsub('varHE', betweenHE*varHE/withinHE, m_L2)
+    m_L2 = gsub('evarY', betweenY*evarY/withinY, m_L2)
+    m_L2 = gsub('var_iY', betweenY*var_iY/withinY, m_L2)
+    m_L2 = gsub('var_sY', betweenY*var_sY/withinY, m_L2)
+    m_L2 = gsub('varY', betweenY*varY/withinY, m_L2)
     return(m_L2)
   })
   
@@ -162,15 +178,235 @@ create_L1_L2 = function(par_tab,
   return(out)
 }
 
+find_uncoverged_params = function(out_list){
+  converge_list = list()
+  for (i in seq_along(out_list)){
+    tryCatch({
+      converge_list[[i]] = summaryConverge(out_list[[i]])
+    }, error = function(x) {
+      x[[i]] = 'error'
+    })
+  }
+  uncoverged = which(unlist(lapply(converge_list, function(x) !is.null(x))))
+  unconverged_params = pars_grid_current[uncoverged, 1:2]
+  
+  return(unconverged_params)
+}
+
+# Define the models
+
+{
+m_est_lm = '
+Y ~ meanY*1 + b_YX*X
+#X ~ meanX*1
+
+Y ~~ varY*Y
+X ~~ varX*X
+
+'
+
+m_est_growth = '
+iY =~ 1*Y1 + 1*Y2 + 1*Y3 + 1*Y4 + 1*Y5 + 1*Y6+ 1*Y7
+sY =~ 0*Y1 + 1*Y2 + 2*Y3 + 3*Y4 + 4*Y5 + 5*Y6+ 6*Y7
+
+iY ~ b_YX*X
+sY ~ b2_YX*X
+
+iY ~~ cov_iY.sY*sY
+iY ~~ var_iY*iY
+sY ~~ var_sY*sY
+
+iY ~ mean_i_Y*1
+sY ~ mean_s_Y*1
+
+Y1 ~~ varY*Y1
+Y2 ~~ varY*Y2
+Y3 ~~ varY*Y3
+Y4 ~~ varY*Y4
+Y5 ~~ varY*Y5
+Y6 ~~ varY*Y6
+Y7 ~~ varY*Y7
+
+X ~~ varX*X
+
+Y1 + Y2 + Y3 + Y4 + Y5 + Y6 + Y7 ~ 0*1
+
+'
+
+}
+
+m_est_rcclpm = RC_GCLM_syntax(endogeneous = c('Y', 'X'),
+                              control = NULL,
+                              model = 'reclpm',
+                              max_time = 7)
+m_est_rcgclm = RC_GCLM_syntax(endogeneous = c('Y', 'X'),
+                              control = NULL,
+                              model = 'recgclm',
+                              max_time = 7)
+
+
+par_tab_rcgclm_long = data.frame(
+  label = c('b_YY', 'b_YX', 'b_XY', 'b_XX',
+            'cov_iY.iX', 'cov_iY.sY', 'cov_iY.sX', 'cov_iX.sY', 'cov_iX.sX', 'cov_sY.sX',
+            'd_YY', 'd_YX', 'd_XY', 'd_XX',
+            'ecov_YX', 'evarY', 'evarX',
+            'mean_i_Y', 'mean_i_X', 'mean_s_Y', 'mean_s_X',
+            'var_iY', 'var_iX', 'var_sY', 'var_sX'),
+  par = c(0.03, 'k', '(-0.06)', '(-0.2)', 
+          '(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
+          '(0.25)', '(-0.004)', '(-0.06)', '(-0.2)',
+          0.002, 'evarY', 'evarX',
+          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
+          'var_iY', 'var_iX', 'var_sY', 'var_sX')
+)
+
+par_tab_rcgclm_short = data.frame(
+  label = c('b_YY', 'b_YX', 'b_XY', 'b_XX',
+            'cov_iY.iX', 'cov_iY.sY', 'cov_iY.sX', 'cov_iX.sY', 'cov_iX.sX', 'cov_sY.sX',
+            'd_YY', 'd_YX', 'd_XY', 'd_XX',
+            'ecov_YX', 'evarY', 'evarX',
+            'mean_i_Y', 'mean_i_X', 'mean_s_Y', 'mean_s_X',
+            'var_iY', 'var_iX', 'var_sY', 'var_sX'),
+  par = c(0.03, 0.006, '(-0.06)', '(-0.2)', 
+          '(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
+          '(0.25)', 'k', '(-0.06)', '(-0.2)',
+          0.002, 'evarY', 'evarX',
+          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
+          'var_iY', 'var_iX', 'var_sY', 'var_sX')
+)
+
+par_tab_rcclpm = data.frame(
+  label = c('cov_iY.iX', 'cov_iY.sY', 'cov_iY.sX', 'cov_iX.sY', 'cov_iX.sX', 'cov_sY.sX', 
+            'd_YY', 'd_YX', 'd_XY', 'd_XX',
+            'ecov_YX', 'evarY', 'evarX',
+            'mean_i_Y', 'mean_i_X', 'mean_s_Y', 'mean_s_X', 
+            'var_iY', 'var_iX', 'var_sY', 'var_sX'),
+  par = c('(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
+          '(0.5)', 'k', '(0.06)', '(0.2)',
+          0.003, 'evarY', 'evarX', 
+          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
+          'var_iY', 'var_iX', 'var_sY', 'var_sX')
+)
+
+par_tab_lm = data.frame(
+  label = c('b_YX', 'varY', 'meanY', 'meanX', 'varX'),
+  par = c('k', 'varY', 0.4, '(-0.07)', 'varX')
+)
+
+par_tab_growth = data.frame(
+  label = c('b_YX', 'b2_YX',
+            'cov_iY.sY',
+            'var_iY', 'var_sY', 'varY',
+            'mean_i_Y', 'mean_s_Y',
+            'varX'),
+  par = c('k', 0.01, 
+          0.03,
+          'var_iY', 'var_sY', 'varY',
+          0.4, -0.2,
+          'varX')
+)
+
+lm_models = create_L1_L2(par_tab=par_tab_lm,
+                         m_est=m_est_lm,
+                         evarX = NA,
+                         var_iX = NA,
+                         var_sX = NA,
+                         varX = 0.8,
+                         evarY = NA,
+                         var_iY = NA,
+                         var_sY = NA,
+                         varY = 0.6)
+growth_models = create_L1_L2(par_tab=par_tab_growth,
+                             m_est=m_est_growth,
+                             evarX = NA,
+                             var_iX = NA,
+                             var_sX = NA,
+                             varX = 0.8,
+                             evarY = NA,
+                             var_iY = 0.6,
+                             var_sY = 0.07,
+                             varY = 0.02)
+rcclpm_models = create_L1_L2(par_tab=par_tab_rcclpm,
+                             m_est=m_est_rcclpm,
+                             evarX = 0.05,
+                             var_iX = 0.4,
+                             var_sX = 0.05,
+                             varX = NA,
+                             evarY = 0.05,
+                             var_iY = 0.6,
+                             var_sY = 0.05,
+                             varY = NA)
+rcgclm_models_long = create_L1_L2(par_tab=par_tab_rcgclm_long,
+                                  m_est=m_est_rcgclm,
+                                  evarX = 0.05,
+                                  var_iX = 0.4,
+                                  var_sX = 0.05,
+                                  varX = NA,
+                                  evarY = 0.05,
+                                  var_iY = 0.6,
+                                  var_sY = 0.05,
+                                  varY = NA)
+rcgclm_models_short = create_L1_L2(par_tab_rcgclm_short,
+                                   m_est_rcgclm,
+                                   evarX = 0.05,
+                                   var_iX = 0.4,
+                                   var_sX = 0.05,
+                                   varX = NA,
+                                   evarY = 0.05,
+                                   var_iY = 0.6,
+                                   var_sY = 0.05,
+                                   varY = NA)
+all_m = list(lm_models, growth_models, rcclpm_models, rcgclm_models_long, rcgclm_models_short)
+names(all_m) = c('lm', 'growth', 'rcclpm', 'rcgclm_long', 'rcgclm_short')
+
+# params for upper and lower levels
+pars_grid_list = list()
+pars = c(-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6)
+pars_grid = expand.grid(L1 = pars, L2 = pars, icc = icc_range_)
+
+for (i in seq_along(all_m)){
+  mod = names(all_m)[i]
+  
+  pars_grid_list[[i]] = pars_grid
+  pars_grid_list[[i]]$model_est = all_m[[i]][['m_est']]
+  pars_grid_list[[i]]$model_L1 = all_m[[i]][['m_L1']]
+  pars_grid_list[[i]]$model_L2 = rep(all_m[[i]][['m_L2']], each = length(pars)^2)
+  
+  if(mod %in% c('growth', 'lm')){
+    pars_grid_list[[i]]$orthogonal = F
+  } else {
+    pars_grid_list[[i]]$orthogonal = T
+  }
+  
+  if(mod %in% 'growth'){
+    pars_grid_list[[i]]$lavaanfun = 'growth'
+  } else {
+    pars_grid_list[[i]]$lavaanfun = 'sem'
+  }
+}
+
+#-------------------------------------------------------------------------------
+#-----------------------------------Simulation----------------------------------
+#-------------------------------------------------------------------------------
+
+
+# Progress bar setup
+pb = txtProgressBar(max = nrow(pars_grid_list[[1]]), style = 3)
+opts = list(progress = function(n) setTxtProgressBar(pb, n))
+wg_size = 50
+nRep = 1000
+n = 50
+
 gen_data = function(N2) {
   
   NperC = rep(wg_size, N2)
   model_L1 = pars_grid_current[i, 'model_L1']
   model_L2 = pars_grid_current[i, 'model_L2']
-  par_value = pars_grid_current[i, 'L1']
+  par_value_L1 = pars_grid_current[i, 'L1']
+  par_value_L2 = pars_grid_current[i, 'L2']
   
-  k1 = paste0('(', par_value[1], ')')
-  k2 = paste0('(', par_value[1], ')')
+  k1 = paste0('(', par_value_L1, ')')
+  k2 = paste0('(', par_value_L2, ')')
   
   popL1 = gsub('k', k1, model_L1) %>%
     glue_collapse("\n")
@@ -215,224 +451,11 @@ gen_data = function(N2) {
   return(do.call(rbind, clusterList))
 }  
 
-find_uncoverged_params = function(out_list){
-  converge_list = list()
-  for (i in seq_along(out_list)){
-    tryCatch({
-      converge_list[[i]] = summaryConverge(out_list[[i]])
-    }, error = function(x) {
-      x[[i]] = 'error'
-    })
-  }
-  uncoverged = which(unlist(lapply(converge_list, function(x) !is.null(x))))
-  unconverged_params = pars_grid_current[uncoverged, 1:2]
-  
-  return(unconverged_params)
-}
-
-# Define the models
-
-{
-m_est_lm = '
-HE ~ meanHE*1 + b_HESP*SP
-
-HE ~~ varHE*HE
-SP ~~ varSP*SP
-
-'
-
-m_est_growth = '
-iHE =~ 1*HE1 + 1*HE2 + 1*HE3 + 1*HE4 + 1*HE5
-sHE =~ 0*HE1 + 1*HE2 + 2*HE3 + 3*HE4 + 4*HE5
-
-iHE ~ b_HESP*SP
-sHE ~ SP
-
-iHE ~~ cov_iHE.sHE*sHE
-iHE ~~ var_iHE*iHE
-sHE ~~ var_sHE*sHE
-
-iHE ~ mean_i_HE*1
-sHE ~ mean_s_HE*1
-
-HE1 ~~ varHE*HE1
-HE2 ~~ varHE*HE2
-HE3 ~~ varHE*HE3
-HE4 ~~ varHE*HE4
-HE5 ~~ varHE*HE5
-
-SP ~~ varSP*SP
-
-HE1 + HE2 + HE3 + HE4 + HE5 ~ 0*1
-
-'
-
-}
-
-m_est_rcclpm = RC_GCLM_syntax(endogeneous = c('HE', 'SP'),
-                              control = NULL,
-                              model = 'reclpm',
-                              max_time = 5)
-m_est_rcgclm = RC_GCLM_syntax(endogeneous = c('HE', 'SP'),
-                              control = NULL,
-                              model = 'recgclm',
-                              max_time = 5)
-
-
-par_tab_rcgclm_long = data.frame(
-  label = c('b_HEHE', 'b_HESP', 'b_SPHE', 'b_SPSP',
-            'cov_iHE.iSP', 'cov_iHE.sHE', 'cov_iHE.sSP', 'cov_iSP.sHE', 'cov_iSP.sSP', 'cov_sHE.sSP',
-            'd_HEHE', 'd_HESP', 'd_SPHE', 'd_SPSP',
-            'ecov_HESP', 'evarHE', 'evarSP',
-            'mean_i_HE', 'mean_i_SP', 'mean_s_HE', 'mean_s_SP',
-            'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP'),
-  par = c(0.03, 'k', '(-0.06)', '(-0.2)', 
-          '(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
-          '(0.25)', '(-0.004)', '(-0.06)', '(-0.2)',
-          0.002, 'evarHE', 'evarSP',
-          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
-          'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP')
-)
-
-par_tab_rcgclm_short = data.frame(
-  label = c('b_HEHE', 'b_HESP', 'b_SPHE', 'b_SPSP',
-            'cov_iHE.iSP', 'cov_iHE.sHE', 'cov_iHE.sSP', 'cov_iSP.sHE', 'cov_iSP.sSP', 'cov_sHE.sSP',
-            'd_HEHE', 'd_HESP', 'd_SPHE', 'd_SPSP',
-            'ecov_HESP', 'evarHE', 'evarSP',
-            'mean_i_HE', 'mean_i_SP', 'mean_s_HE', 'mean_s_SP',
-            'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP'),
-  par = c(0.03, 0.006, '(-0.06)', '(-0.2)', 
-          '(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
-          '(0.25)', 'k', '(-0.06)', '(-0.2)',
-          0.002, 'evarHE', 'evarSP',
-          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
-          'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP')
-)
-
-par_tab_rcclpm = data.frame(
-  label = c('cov_iHE.iSP', 'cov_iHE.sHE', 'cov_iHE.sSP', 'cov_iSP.sHE', 'cov_iSP.sSP', 'cov_sHE.sSP', 
-            'd_HEHE', 'd_HESP', 'd_SPHE', 'd_SPSP',
-            'ecov_HESP', 'evarHE', 'evarSP',
-            'mean_i_HE', 'mean_i_SP', 'mean_s_HE', 'mean_s_SP', 
-            'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP'),
-  par = c('(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
-          '(0.5)', 'k', '(0.06)', '(0.2)',
-          0.003, 'evarHE', 'evarSP', 
-          '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
-          'var_iHE', 'var_iSP', 'var_sHE', 'var_sSP')
-)
-
-par_tab_lm = data.frame(
-  label = c('b_HESP', 'varHE', 'meanHE', 'meanSP', 'varSP'),
-  par = c('k', 'var_HE', 0.4, '(-0.07)', 'varSP')
-)
-
-par_tab_growth = data.frame(
-  label = c('b_HESP', 
-            'cov_iHE.sHE', 'var_iHE', 'var_sHE',
-            'mean_i_HE', 'mean_s_HE',
-            'varSP'),
-  par = c('k',
-          0.03, 'var_iHE', 'var_sHE',
-          0.4, -0.2,
-          'varSP')
-)
-
-growth_lm = create_L1_L2(par_tab=par_tab_lm,
-                         m_est=m_est_lm,
-                         evarSP = NA,
-                         var_iSP = NA,
-                         var_sSP = NA,
-                         varSP = 0.8,
-                         evarHE = NA,
-                         var_iHE = NA,
-                         var_sHE = NA,
-                         varHE = NA)
-growth_models = create_L1_L2(par_tab=par_tab_growth,
-                             m_est=m_est_growth,
-                             evarSP = NA,
-                             var_iSP = NA,
-                             var_sSP = NA,
-                             varSP = 0.8,
-                             evarHE = NA,
-                             var_iHE = 0.6,
-                             var_sHE = 0.07,
-                             varHE = 0.02)
-rcclpm_models = create_L1_L2(par_tab=par_tab_rcclpm,
-                             m_est=m_est_rcclpm,
-                             evarSP = 0.05,
-                             var_iSP = 0.4,
-                             var_sSP = 0.05,
-                             varSP = NA,
-                             evarHE = 0.05,
-                             var_iHE = 0.6,
-                             var_sHE = 0.05,
-                             varHE = NA)
-rcgclm_models_long = create_L1_L2(par_tab=par_tab_rcgclm_long,
-                                  m_est=m_est_rcgclm,
-                                  evarSP = 0.05,
-                                  var_iSP = 0.4,
-                                  var_sSP = 0.05,
-                                  varSP = NA,
-                                  evarHE = 0.05,
-                                  var_iHE = 0.6,
-                                  var_sHE = 0.05,
-                                  varHE = NA)
-rcgclm_models_short = create_L1_L2(par_tab_rcgclm_short,
-                                   m_est_rcgclm,
-                                   evarSP = 0.05,
-                                   var_iSP = 0.4,
-                                   var_sSP = 0.05,
-                                   varSP = NA,
-                                   evarHE = 0.05,
-                                   var_iHE = 0.6,
-                                   var_sHE = 0.05,
-                                   varHE = NA)
-all_m = list(growth_lm, growth_models, rcclpm_models, rcgclm_models_long, rcgclm_models_short)
-names(all_m) = c('growth_lm', 'growth_models', 'rcclpm', 'rcgclm_long', 'rcgclm_short')
-
-# params for upper and lower levels
-pars_grid_list = list()
-pars = seq(-0.5, 0.5, 0.1)
-pars_grid = expand.grid(L1 = pars, icc = icc_range_)
-
-for (i in seq_along(all_m)){
-  mod = names(all_m)[i]
-  
-  pars_grid_list[[i]] = pars_grid
-  pars_grid_list[[i]]$model_est = all_m[[i]][['m_est']]
-  pars_grid_list[[i]]$model_L1 = all_m[[i]][['m_L1']]
-  pars_grid_list[[i]]$model_L2 = rep(all_m[[i]][['m_L2']], each = length(pars))
-  
-  if(mod %in% c('model_growth', 'model_lm')){
-    pars_grid_list[[i]]$orthogonal = F
-  } else {
-    pars_grid_list[[i]]$orthogonal = T
-  }
-  
-  if(mod %in% 'model_growth'){
-    pars_grid_list[[i]]$lavaanfun = 'growth'
-  } else {
-    pars_grid_list[[i]]$lavaanfun = 'sem'
-  }
-}
-
-#-------------------------------------------------------------------------------
-#-----------------------------------Simulation----------------------------------
-#-------------------------------------------------------------------------------
-
-# Progress bar setup
-pb = txtProgressBar(max = nrow(pars_grid_current), style = 3)
-progress = function(n) setTxtProgressBar(pb, n)
-opts = list(progress = progress)
-wg_size = 50
-nRep = 200
-n = 50
-
 # lm
 model_number = 1
 pars_grid_current = pars_grid_list[[model_number]]
 nvar = 2
+model_type = 'lm'
 
 tic()
 cl = makeCluster(14)
@@ -449,7 +472,6 @@ true_out_lm = foreach(i = 1:nrow(pars_grid_current),
                                     generate = gen_data, 
                                     model = pars_grid_current[i, 'model_est'], 
                                     lavaanfun = 'sem', 
-                                    orthogonal = F,
                                     estimator = 'mlr', 
                                     cluster = "ID")
                       }
@@ -465,7 +487,6 @@ missp_out_lm = foreach(i = 1:nrow(pars_grid_current),
                                     generate = gen_data, 
                                     model = pars_grid_current[i, 'model_est'], 
                                     lavaanfun = 'sem', 
-                                    orthogonal = F,
                                     estimator = 'mlr', 
                                     cluster = "ID",
                                     datafun = aggregate_x)
@@ -481,7 +502,8 @@ toc()
 # growth
 model_number = 2
 pars_grid_current = pars_grid_list[[model_number]]
-nvar = 6
+nvar = 8
+model_type = 'growth'
 
 tic()
 cl = makeCluster(14)
@@ -524,7 +546,8 @@ toc()
 # rcclpm
 model_number = 3
 pars_grid_current = pars_grid_list[[model_number]]
-nvar = 10
+nvar = 14
+model_type = 'cross-lag'
 
 tic()
 cl = makeCluster(14)
@@ -570,7 +593,8 @@ toc()
 # rcgclm long
 model_number = 4
 pars_grid_current = pars_grid_list[[model_number]]
-nvar = 10
+nvar = 14
+model_type = 'cross-lag'
 
 tic()
 cl = makeCluster(14)
@@ -617,7 +641,8 @@ toc()
 # rcgclm short
 model_number = 5
 pars_grid_current = pars_grid_list[[model_number]]
-nvar = 10
+nvar = 14
+model_type = 'cross-lag'
 
 tic()
 cl = makeCluster(14)
@@ -637,7 +662,8 @@ true_out_rcgclm_short = foreach(i = 1:nrow(pars_grid_current),
                                              cluster = "ID")
                                }
 missp_out_rcgclm_short = foreach(i = 1:nrow(pars_grid_current),
-                                .packages = c("simsem","lavaan","dplyr","glue","broom","data.table"), 
+                                .packages = c("simsem","lavaan","dplyr","glue",
+                                              "broom","data.table"), 
                                 .options.snow = opts) %dopar% {
                                   
                                   simsem::sim(seed = 12345,
@@ -659,24 +685,53 @@ toc()
 #find_uncoverged_params(true_out_rcgclm_short)
 #find_uncoverged_params(missp_out_rcgclm_short)
 
+# saving result lists
+
+getwd()
+wd = 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper3'
+setwd(wd)
+saveRDS(true_out_lm, 'true_lm_7.rds')
+saveRDS(missp_out_lm, 'missp_lm_7.rds')
+saveRDS(true_out_growth, 'true_growth_7.rds')
+saveRDS(missp_out_growth, 'missp_growth_7.rds')
+
+saveRDS(true_out_rcclpm, 'true_rcclpm_7.rds')
+saveRDS(missp_out_rcclpm, 'missp_rcclpm_7.rds')
+
+saveRDS(true_out_rcgclm_long, 'true_rcgclm_long_7.rds')
+saveRDS(missp_out_rcgclm_long, 'missp_rcgclm_long_7.rds')
+saveRDS(true_out_rcgclm_short, 'true_rcgclm_short_7.rds')
+saveRDS(missp_out_rcgclm_short, 'missp_rcgclm_short_7.rds')
+
+true_out_lm = readRDS('true_lm_7.rds')
+missp_out_lm = readRDS('missp_lm_7.rds')
+true_out_growth = readRDS('true_growth_7.rds')
+missp_out_growth = readRDS('missp_growth_7.rds')
+true_out_rcclpm = readRDS('true_rcclpm_7.rds')
+missp_out_rcclpm = readRDS('missp_rcclpm_7.rds')
+true_out_rcgclm_long = readRDS('true_rcgclm_long_7.rds')
+missp_out_rcgclm_long = readRDS('missp_rcgclm_long_7.rds')
+true_out_rcgclm_short = readRDS('true_rcgclm_short_7.rds')
+missp_out_rcgclm_short = readRDS('missp_rcgclm_short_7.rds')
+
 # Summarizing the results
 
 sim_res_lm = summarise_simultation(true_out_lm,
                                    missp_out_lm,
                                    pars_grid_list[[1]]) %>%
-  dplyr::mutate(reg_pars = if_else(reg_pars == 'b_HESP', 'k', reg_pars),
+  dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
                 model = 'lm')
 
 sim_res_growth = summarise_simultation(true_out_growth,
                                        missp_out_growth,
                                        pars_grid_list[[2]]) %>%
-  dplyr::mutate(reg_pars = if_else(reg_pars == 'b_HESP', 'k', reg_pars),
+  dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
                 model = 'growth')
 
 sim_res_rcclpm = summarise_simultation(true_out_rcclpm,
                                        missp_out_rcclpm,
                                        pars_grid_current = pars_grid_list[[3]]) %>%
-  dplyr::mutate(reg_pars = if_else(reg_pars == 'd_HESP <- (e_HE2~e_SP1)', 'k', reg_pars),
+  dplyr::mutate(reg_pars = if_else(reg_pars == 'd_YX <- (e_Y2~e_X1)', 'k', reg_pars),
                 model = 'rcclpm')
 
 sim_res_rcgclm_long = summarise_simultation(true=true_out_rcgclm_long,
@@ -689,7 +744,7 @@ sim_res_rcgclm_long = summarise_simultation(true=true_out_rcgclm_long,
 sim_res_rcgclm_short = summarise_simultation(true_out_rcgclm_short,
                                              missp_out_rcgclm_short,
                                              pars_grid_list[[5]]) %>%
-  dplyr::mutate(reg_pars = if_else(reg_pars == 'd_HESP <- (HE2~e_SP1)', 'k', reg_pars),
+  dplyr::mutate(reg_pars = if_else(reg_pars == 'd_YX <- (Y2~e_X1)', 'k', reg_pars),
                 model = 'rcgclm_short')
 
 
@@ -699,84 +754,204 @@ sim_res_all = rbind.data.frame(sim_res_lm,
                                sim_res_rcgclm_long,
                                sim_res_rcgclm_short
                                ) %>%
-  filter(reg_pars == 'k')
+  filter(reg_pars == 'k') %>%
+  mutate(bw_diff = L1 - L2)
 
-#sim_res_all$rel_bias_log = ifelse(sim_res_all[,'Rel Bias'] < 0,
-#                                   -log1p(-sim_res_all[,'Rel Bias']),
-#                                   log1p(sim_res_all[,'Rel Bias']))
+# Define a function to perform the repeated analysis and eta-squared calculation
+perform_anova = function(response, data = sim_res_all) {
+  
+  response_quoted = if (grepl(" ", response)) paste("`", response, "`", sep = "") else response
+  
+  terms = c('model', 'bw_diff', 'factor(icc)')
+  interaction_terms = paste(terms, collapse = "*")
+  
+  # Create the model formula with all interactions
+  #formula = as.formula(paste(response_quoted, "~",
+  #                           paste0(interaction_terms, '+', 'abs(L1)', '+', 'abs(L2)')))
+  
+  formula = paste0(response_quoted, '~ model * bw_diff * factor(icc) *abs(L1) *abs(L2)')
+  
+  
+  lm_fit = lm(formula, data)
+  aov_fit = anova(lm_fit)
+  
+  # Calculate the total sum of squares once
+  total_sum_sq = sum(aov_fit$"Sum Sq")
+  
+  # Add the percentage of explained variance
+  #eta = cbind(aov_fit, PctExp = round(aov_fit$"Sum Sq" / total_sum_sq * 100, 3))
+  eta = cbind.data.frame(rownames(aov_fit),  round(aov_fit$"Sum Sq" / total_sum_sq * 100, 2))[-length(aov_fit$"Sum Sq"),]
+  colnames(eta) = c('Term', response)
+  
+  return(eta)
+}
 
-ggplot(sim_res_all %>% dplyr::filter(reg_pars == 'k'),
-       aes(x = as.factor(round(L1, 2)), y = as.factor(round(icc, 2)), 
-           fill = `Average Bias`)) + 
-  geom_tile(color = "black", size = 0.3) +
-  
-  # Add geom_text to overlay the bias value on each tile
-  geom_text(aes(label = sprintf("%.2f", `Average Bias`)), size = 4, color = "black") +
-  
-  scale_fill_gradient2(low = brewer.pal(11, "RdBu")[1], 
-                       high = brewer.pal(11, "RdBu")[11], 
-                       mid = "white", 
-                       midpoint = 0,
-                       name = "Average Bias"#, 
-                       #breaks = c(-log(10), 0, log(10)), 
-                       #labels = c("-10", "0", "10")
-  ) +
-  facet_wrap(~ model#, labeller = as_labeller(facet_titles)
-             ) +
-  labs(x = "Effect Size", y = "ICC") +
-  theme_ipsum_tw() +
-  theme(axis.title = element_text(size = 20),
-        axis.text = element_text(size = 24))#+
-#labs(title = title)
-
-ggplot(sim_res_all %>% dplyr::filter(reg_pars == 'k' & !L1 == 0),
-       aes(x = as.factor(round(L1, 2)), y = as.factor(round(icc, 2)), 
-           fill = `Rel Bias`)) + 
-  geom_tile(color = "black", size = 0.3) +
-  
-  # Add geom_text to overlay the bias value on each tile
-  geom_text(aes(label = sprintf("%.2f", `Rel Bias`)), size = 4, color = "black") +
-  
-  scale_fill_gradient2(low = brewer.pal(11, "RdBu")[1], 
-                       high = brewer.pal(11, "RdBu")[11], 
-                       mid = "white", 
-                       midpoint = 0,
-                       name = "Relative Bias"#, 
-                       #breaks = c(-log(10), 0, log(10)), 
-                       #labels = c("-10", "0", "10")
-  ) +
-  facet_wrap(~ model#, labeller = as_labeller(facet_titles)
-  ) +
-  labs(x = "Effect Size", y = "ICC") +
-  theme_ipsum_tw() +
-  theme(axis.title = element_text(size = 20),
-        axis.text = element_text(size = 24))#+
-#labs(title = title)
+# Run the analysis for each response
+abs_bias_eta = perform_anova(response='Average Bias'); abs_bias_eta
+rel_SE_bias_eta = perform_anova('Rel SE Bias'); rel_SE_bias_eta
+coverage_eta = perform_anova(response='Coverage'); coverage_eta
+power_eta = perform_anova('Power (Not equal 0)'); power_eta
+rmsea_eta = perform_anova('rmsea.scaled'); rmsea_eta
+eta_all = purrr::reduce(list(abs_bias_eta, rel_SE_bias_eta, coverage_eta, power_eta, rmsea_eta),
+              dplyr::left_join, by = 'Term')
 
 
-ggplot(sim_res_all %>% dplyr::filter(reg_pars == 'k'),
-       aes(x = as.factor(round(L1, 2)), y = as.factor(round(icc, 2)), 
-           fill = Coverage)) + 
-  geom_tile(color = "black", size = 0.3) +
-  
-  # Add geom_text to overlay the bias value on each tile
-  geom_text(aes(label = sprintf("%.2f", `Coverage`)), size = 4, color = "black") +
-  
-  scale_fill_gradient2(low = brewer.pal(11, "RdBu")[1], 
-                       high = brewer.pal(11, "RdBu")[11], 
-                       mid = "white", 
-                       midpoint = 0,
-                       name = "Coverage"#, 
-                       #breaks = c(-log(10), 0, log(10)), 
-                       #labels = c("-10", "0", "10")
-  ) +
-  facet_wrap(~ model#, labeller = as_labeller(facet_titles)
-  ) +
-  labs(x = "Effect Size", y = "ICC") +
-  theme_ipsum_tw() +
-  theme(axis.title = element_text(size = 20),
-        axis.text = element_text(size = 24))#+
-#labs(title = title)
+#TukeyHSD(aov(SE_ratio ~ model, 
+#             sim_res_all))
+
+
+sim_res_all$model = factor(sim_res_all$model,
+                           levels = c('lm', 'growth', 'rcclpm', 'rcgclm_long', 'rcgclm_short'),
+                           labels = c('Linear Regression',
+                                      'Growth Curve',
+                                      'RC-CLPM',
+                                      'RC-GCLM Long-Run',
+                                      'RC-GCLM Short-Run'))
+sim_res_all$icc = factor(sim_res_all$icc,
+                         levels = c(0.1, 0.4, 0.7),
+                         labels = c('ICC = 0.1',
+                                    'ICC = 0.4',
+                                    'ICC = 0.7'))
+
+## Plotting
+
+library(ggpubr)
+wd = 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper3/'
+
+# Average Bias
+ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`))) + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) +
+  geom_point(size = 0.8) + 
+  scale_y_continuous(name = 'Absolute Bias') + 
+  scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
+  geom_smooth(aes(linewidth = icc), method = "loess", color = "darkred", se = F) +
+  facet_wrap(~ model, nrow = 1) +
+  theme_minimal()+ 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom',
+        panel.spacing = unit(2, "lines"))
+ggsave(paste0(wd, "average_bias.svg"), width = 40, height = 10, units = 'cm')
+
+# Rel SE Bias
+re_se_df = sim_res_all %>% 
+  dplyr::select(L1, L2, `Rel SE Bias`, icc, model) %>%
+  pivot_longer(cols = c(L1, L2), names_to = 'L',
+               values_to = 'L_value') 
+ggplot(re_se_df %>% filter(L == 'L1'), 
+       aes(x = abs(L_value), y = `Rel SE Bias`))  + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  #scale_linetype_manual(values = c('solid', 'dashed')) +
+  geom_point(size = 0.8) + 
+  scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
+  ) + 
+  scale_x_continuous(name = 'Absolute Within-Level Effect') + 
+  geom_smooth(aes(linewidth = icc), method = "loess", se = F,
+              color = "darkred") +
+  facet_wrap(~ model, nrow = 1) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom',
+        panel.spacing = unit(2, "lines"))
+ggsave(paste0(wd, "rel_se_bias_L1.svg"), width = 40, height = 10, units = 'cm')
+
+ggplot(re_se_df %>% filter(L == 'L2'), 
+       aes(x = abs(L_value), y = `Rel SE Bias`)) + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  # scale_linetype_manual(values = c('solid', 'dashed')) +
+  geom_point(size = 0.8) + 
+  scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
+  ) + 
+  scale_x_continuous(name = 'Absolute Between-Level Effect') + 
+  geom_smooth(aes(linewidth = icc), method = "loess", se = F, color = "darkred") +
+  facet_wrap(~ model, nrow = 1) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom',
+        panel.spacing = unit(2, "lines"))
+ggsave(paste0(wd, "rel_se_bias_L2.svg"), width = 40, height = 10, units = 'cm')
+
+# Coverage
+ggplot(sim_res_all, aes(x = abs(bw_diff), y = `Coverage`)) + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  geom_point(size = 0.8) + 
+  scale_y_continuous(name = 'Coverage') + 
+  scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
+  geom_smooth(aes(linewidth = icc), method = "loess", se = F,
+              color = "darkred") +
+  facet_wrap(~ model, nrow = 1) +
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom',
+        panel.spacing = unit(2, "lines"))
+ggsave(paste0(wd, "coverage.svg"), width = 40, height = 10, units = 'cm')
+
+
+# Power
+ggplot(sim_res_all, aes(x = abs(L2), y = `Power (Not equal 0)`)) + 
+  geom_point(size = 0.8)  + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  scale_y_continuous(name = 'Power') + 
+  scale_x_continuous(name = 'Absolute Between-Level Effect') + 
+  geom_smooth(aes(linewidth = icc), method = "loess", se = F, color = "darkred")  +
+  theme_minimal()  +
+  facet_wrap(~ model, nrow = 1) + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom',
+        panel.spacing = unit(2, "lines"))
+ggsave(paste0(wd, "power.svg"), width = 40, height = 10, units = 'cm')
+
+# RMSEA
+ggplot(sim_res_all %>% 
+         filter(!model == 'Linear Regression') %>%
+         group_by(model, icc) %>%
+         dplyr::reframe(rmsea.scaled = rmsea.scaled,
+                        model = model,
+                        icc = icc)  %>% 
+         group_by(model,icc) %>%
+         slice(1),
+       aes(y = rmsea.scaled, x = model, fill = icc))  +
+  scale_fill_brewer(palette  = 6) + 
+  geom_bar(aes(y = `rmsea.scaled`, x = model),
+           stat = "identity", position = "dodge") +
+  scale_y_continuous(name = 'RMSEA Scaled') + 
+  scale_x_discrete(name = NULL) + 
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        strip.text = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        legend.position = 'bottom')
+ggsave(paste0(wd, "rmsea.svg"), width = 40, height = 10, units = 'cm')
+
+
+
 
 
 

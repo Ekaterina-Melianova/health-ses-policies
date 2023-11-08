@@ -295,43 +295,50 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   cf = c(rep('b_', n_var), rep('d_', n_var)) 
   fin = c()
   for (list in split_list){
-    
+    #list = split_list[[1]]
     tib = list
     tib = cbind(cf, list) 
     
     strings = c()
     for (j in 1:(max_time-1)){
-      
+      #j=1
       if (multiple == T){
         string_out_vec =  tib %>%
         dplyr::mutate(o = ifelse(cf == 'b_',
                                  glue('c({cf}{y}{z}1,{cf}{y}{z}2)*{z}{j}'),
                                  glue('c({cf}{y}{z}1,{cf}{y}{z}2)*e_{z}{j}'))) %>%
         pull(o)
-        current_var = substr(string_out_vec,5,6)[1]
+        
+        #current_var = sub(".*\\*(.*?)\\d[^0-9]*$", "\\1", string_out_vec[2])
+        #current_var = substr(string_out_vec,5,6)[1]
+        current_var = tib$x[1]
+
+
       } else{
         string_out_vec =  tib %>%
           dplyr::mutate(o = ifelse(cf == 'b_',
                                    glue('{cf}{y}{z}*{z}{j}'),
                                    glue('{cf}{y}{z}*e_{z}{j}'))) %>%
           pull(o)
-        current_var = substr(string_out_vec,3,4)[1]
+
+        current_var = tib$x[1] 
+        #current_var = sub(".*\\*(.*?)\\d[^0-9]*$", "\\1", string_out_vec[2])
+        #current_var = substr(string_out_vec,3,4)[1]
       }
       
       string_out = string_out_vec %>%
         glue_collapse(" + ")
       
-      
       if(cross == T){
         
-        if(current_var == 'HE'|full ==T){
+        if(current_var == endogeneous[1]|full ==T){
          strings = c(strings,
                   glue(current_var,
                        j+1, ' ~ ', string_out)) %>%
            glue_collapse("\n")
          } else if(current_var %in% reverse){
            pattern_pos = c(grep(paste0(current_var,current_var), string_out_vec),
-                       grep('HE', string_out_vec))
+                       grep(endogeneous[1], string_out_vec))
            
            strings = c(strings,
                     glue(current_var,
