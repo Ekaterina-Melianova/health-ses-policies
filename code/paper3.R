@@ -76,13 +76,17 @@ summarise_simultation = function(true, missp, pars_grid_current){
   #for (i in which(converged == T)){
   for (i in seq_along(true)){
     missp[[i]]@paramValue = as.data.frame(t(colMeans(true[[i]]@coef, na.rm=T)))
-    summary_out[[i]] = summaryParam(missp[[i]],
-                                    detail = TRUE,
-                                    digits = 3) %>%
+    
+    true_params = summaryParam(true[[i]]) %>% 
+      dplyr::select(power_true = 'Power (Not equal 0)')
+    
+    summary_main = summaryParam(missp[[i]],
+                                detail = TRUE,
+                                digits = 3) %>%
       rownames_to_column('reg_pars') %>%
       dplyr::mutate(SE_ratio = `Average SE`/`Estimate SD`)
     
-      fit_ind = as.data.frame(t(colMeans(inspect(missp[[i]], 'fit')[,c(
+      fit_ind_true = as.data.frame(t(colMeans(inspect(true[[i]], 'fit')[,c(
         "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
                                                     "aic",
                                                     "bic",
@@ -92,7 +96,24 @@ summarise_simultation = function(true, missp, pars_grid_current){
                                                     "srmr",
                                                     'aic',
                                                     'bic')])))
-      summary_out[[i]] = cbind(summary_out[[i]], fit_ind %>% slice(rep(1:n(), nrow(summary_out[[i]]))))
+      colnames(fit_ind_true) = paste0('true_', colnames(fit_ind_true))
+      fit_ind_missp = as.data.frame(t(colMeans(inspect(missp[[i]], 'fit')[,c(
+        "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
+        "aic",
+        "bic",
+        "rmsea.scaled",
+        "cfi.scaled", 
+        "tli.scaled", 
+        "srmr",
+        'aic',
+        'bic')])))
+      colnames(fit_ind_missp) = paste0('missp_', colnames(fit_ind_missp))
+      fin_ind_all = cbind(fit_ind_true, fit_ind_missp)
+      
+      summary_out[[i]] = cbind(summary_main, 
+                               true_params,
+                               fin_ind_all %>%
+                                 slice(rep(1:n(), nrow(summary_main))))
 
   }
   
@@ -107,6 +128,14 @@ summarise_simultation = function(true, missp, pars_grid_current){
   return(summary_out)
 }
 
+
+sim_res_lm = summarise_simultation(true_out_lm,
+                                   missp_out_lm,
+                                   pars_grid_list[[1]]) %>%
+dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
+                   model = 'lm')
+
+#
 #icc_range_ = c(0.05, 0.25, 0.45, 0.65, 0.85)
 icc_range_ = c(0.1, 0.4, 0.7)
 
@@ -182,15 +211,18 @@ find_uncoverged_params = function(out_list){
   converge_list = list()
   for (i in seq_along(out_list)){
     tryCatch({
-      converge_list[[i]] = summaryConverge(out_list[[i]])
-    }, error = function(x) {
-      x[[i]] = 'error'
+      converge_list[[i]] = 100*(1-(summaryConverge(out_list[[i]])$Converged['num.nonconverged']/1000))
+    }, error = function(e) {
+      i = 'error'
     })
   }
-  uncoverged = which(unlist(lapply(converge_list, function(x) !is.null(x))))
-  unconverged_params = pars_grid_current[uncoverged, 1:2]
+  #uncoverged_which = which(unlist(lapply(converge_list, function(x) !is.null(x))))
+  #unconverged_params = pars_grid_current[uncoverged_which, 1:2]
+  uncoverged = unlist(converge_list)
+  n_uncoverged = length(uncoverged)
+  mean_uncoverged = mean(uncoverged)
   
-  return(unconverged_params)
+  return(c(n_uncoverged, mean_uncoverged))
 }
 
 # Define the models
@@ -685,6 +717,12 @@ toc()
 #find_uncoverged_params(true_out_rcgclm_short)
 #find_uncoverged_params(missp_out_rcgclm_short)
 
+# unconverged - only rcgclm
+find_uncoverged_params(missp_out_rcgclm_long)
+find_uncoverged_params(missp_out_rcgclm_short)
+find_uncoverged_params(true_out_rcgclm_long)
+find_uncoverged_params(true_out_rcgclm_short)
+
 # saving result lists
 
 getwd()
@@ -714,7 +752,7 @@ missp_out_rcgclm_long = readRDS('missp_rcgclm_long_7.rds')
 true_out_rcgclm_short = readRDS('true_rcgclm_short_7.rds')
 missp_out_rcgclm_short = readRDS('missp_rcgclm_short_7.rds')
 
-# Summarizing the results
+# Summarizing results
 
 sim_res_lm = summarise_simultation(true_out_lm,
                                    missp_out_lm,
@@ -755,24 +793,37 @@ sim_res_all = rbind.data.frame(sim_res_lm,
                                sim_res_rcgclm_short
                                ) %>%
   filter(reg_pars == 'k') %>%
-  mutate(bw_diff = L1 - L2)
+  mutate(bw_diff = L1 - L2,
+         rmse = sqrt((`Average Bias`)^2))
 
 # Define a function to perform the repeated analysis and eta-squared calculation
-perform_anova = function(response, data = sim_res_all) {
+perform_anova = function(response, data = sim_res_all, fit = FALSE) {
   
   response_quoted = if (grepl(" ", response)) paste("`", response, "`", sep = "") else response
   
-  terms = c('model', 'bw_diff', 'factor(icc)')
+  terms = c('model', 'bw_diff', 'icc')
   interaction_terms = paste(terms, collapse = "*")
   
   # Create the model formula with all interactions
   #formula = as.formula(paste(response_quoted, "~",
   #                           paste0(interaction_terms, '+', 'abs(L1)', '+', 'abs(L2)')))
+  data %<>% mutate(L1 = abs(L1),
+                   L2 = abs(L2),
+                   bw_diff = abs(bw_diff)) %>%
+    dplyr::rename(ICC = icc, 
+                  AbsDiff = bw_diff,
+                  AbsL1 = L1,
+                  AbsL2 = L2,
+                  Method = model)
+  data$ICC = as.factor(data$ICC)
+  formula = paste0(response_quoted, '~ Method*AbsDiff*ICC*AbsL1*AbsL2')
   
-  formula = paste0(response_quoted, '~ model * bw_diff * factor(icc) *abs(L1) *abs(L2)')
+  if (fit){
+    lm_fit = lm(formula, data = data %<>% filter(!Method == 'lm'))
+  } else{
+    lm_fit = lm(formula, data = data)
+  }
   
-  
-  lm_fit = lm(formula, data)
   aov_fit = anova(lm_fit)
   
   # Calculate the total sum of squares once
@@ -786,19 +837,66 @@ perform_anova = function(response, data = sim_res_all) {
   return(eta)
 }
 
-# Run the analysis for each response
-abs_bias_eta = perform_anova(response='Average Bias'); abs_bias_eta
-rel_SE_bias_eta = perform_anova('Rel SE Bias'); rel_SE_bias_eta
-coverage_eta = perform_anova(response='Coverage'); coverage_eta
-power_eta = perform_anova('Power (Not equal 0)'); power_eta
-rmsea_eta = perform_anova('rmsea.scaled'); rmsea_eta
-eta_all = purrr::reduce(list(abs_bias_eta, rel_SE_bias_eta, coverage_eta, power_eta, rmsea_eta),
-              dplyr::left_join, by = 'Term')
+criteria_fitind = c('true_rmsea.scaled', 'missp_rmsea.scaled', 
+                    'true_srmr', 'missp_srmr', 
+                    'true_chisq.scaled', 'missp_chisq.scaled', 
+                    'true_aic', 'missp_aic', 
+                    'true_bic', 'missp_bic',
+                    'true_cfi.scaled',  'missp_cfi.scaled', 
+                    'true_tli.scaled',  'missp_tli.scaled')
+eta_fitind = purrr::reduce(lapply(criteria_fitind, 
+                                  function(x) perform_anova(x, fit = T)), 
+                           dplyr::left_join, by = 'Term')
+colnames(eta_fitind) = c('Term', 
+                         'True RMSEA', 'Missp RMSEA', 
+                         'True SRMR', 'Missp SRMR',
+                         'True Chisq', 'Missp Chisq',
+                         'True AIC', 'Missp AIC',
+                         'True BIC', 'Missp BIC',
+                         'True CFI', 'Missp CFI',
+                         'True TLI', 'Missp TLI')
+eta_fitind$Term = gsub(':', ' : ', eta_fitind$Term)
+criteria_main = c('Average Bias',
+                    'Rel SE Bias',
+                    'Coverage', 
+                    'Power (Not equal 0)')
+eta_main = purrr::reduce(lapply(criteria_main, perform_anova), 
+                           dplyr::left_join, by = 'Term')
+colnames(eta_main) = c('Term', 
+                       'Average Bias',
+                       'Relative SE Bias',
+                       'Coverage', 
+                       'Power')
+eta_main$Term = gsub(':', ' : ', eta_main$Term)
 
+# writing to word
+library(officer)
 
-#TukeyHSD(aov(SE_ratio ~ model, 
-#             sim_res_all))
+# Create a list of data frames
+df_list = list(eta_main,eta_fitind)
 
+# Create a Word document
+doc = read_docx()
+
+# Loop over the list of data frames and add them to the document
+for (i in seq_along(df_list)) {
+  doc = doc %>% 
+    body_add_table(df_list[[i]])
+  
+  # Add a page break after each table
+  if (i < length(df_list)) {
+    doc = doc %>% 
+      body_add_break()
+  }
+}
+
+# Save the document
+
+print(doc, target = "paper3_tabs.docx")
+
+# ---------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------
 
 sim_res_all$model = factor(sim_res_all$model,
                            levels = c('lm', 'growth', 'rcclpm', 'rcgclm_long', 'rcgclm_short'),
@@ -813,18 +911,19 @@ sim_res_all$icc = factor(sim_res_all$icc,
                                     'ICC = 0.4',
                                     'ICC = 0.7'))
 
-## Plotting
 
 library(ggpubr)
 wd = 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper3/'
+library(RColorBrewer)
 
 # Average Bias
-ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`))) + 
+ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`), color = icc)) + 
   scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) +
-  geom_point(size = 0.8) + 
+  scale_color_manual(values = brewer.pal(3, "Set1")) +
+  geom_point(size = 1) + 
   scale_y_continuous(name = 'Absolute Bias') + 
   scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
-  geom_smooth(aes(linewidth = icc), method = "loess", color = "darkred", se = F) +
+  geom_smooth(method = "loess",  se = F, linewidth = 0.7) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal()+ 
   theme(axis.title = element_text(size = 18, face = 'bold'),
@@ -839,19 +938,18 @@ ggsave(paste0(wd, "average_bias.svg"), width = 40, height = 10, units = 'cm')
 
 # Rel SE Bias
 re_se_df = sim_res_all %>% 
-  dplyr::select(L1, L2, `Rel SE Bias`, icc, model) %>%
+  dplyr::select(L1, L2, `Rel SE Bias`,`SE_ratio`, icc, model) %>%
   pivot_longer(cols = c(L1, L2), names_to = 'L',
                values_to = 'L_value') 
 ggplot(re_se_df %>% filter(L == 'L1'), 
-       aes(x = abs(L_value), y = `Rel SE Bias`))  + 
-  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  #scale_linetype_manual(values = c('solid', 'dashed')) +
-  geom_point(size = 0.8) + 
+       aes(x = abs(L_value), y = `SE_ratio`, color = icc))  +
+  scale_color_manual(values = brewer.pal(3, "Set1"))+ 
+  #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  geom_point(size = 1) + 
   scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
   ) + 
   scale_x_continuous(name = 'Absolute Within-Level Effect') + 
-  geom_smooth(aes(linewidth = icc), method = "loess", se = F,
-              color = "darkred") +
+  geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 18, face = 'bold'),
@@ -865,14 +963,13 @@ ggplot(re_se_df %>% filter(L == 'L1'),
 ggsave(paste0(wd, "rel_se_bias_L1.svg"), width = 40, height = 10, units = 'cm')
 
 ggplot(re_se_df %>% filter(L == 'L2'), 
-       aes(x = abs(L_value), y = `Rel SE Bias`)) + 
-  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  # scale_linetype_manual(values = c('solid', 'dashed')) +
-  geom_point(size = 0.8) + 
-  scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
-  ) + 
+       aes(x = abs(L_value), y = `Rel SE Bias`, color = icc)) +
+  scale_color_manual(values = brewer.pal(3, "Set1"))+ 
+  #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  geom_point(size = 1) + 
+  scale_y_continuous(name = 'Relative SE Bias') + 
   scale_x_continuous(name = 'Absolute Between-Level Effect') + 
-  geom_smooth(aes(linewidth = icc), method = "loess", se = F, color = "darkred") +
+  geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 18, face = 'bold'),
@@ -886,13 +983,13 @@ ggplot(re_se_df %>% filter(L == 'L2'),
 ggsave(paste0(wd, "rel_se_bias_L2.svg"), width = 40, height = 10, units = 'cm')
 
 # Coverage
-ggplot(sim_res_all, aes(x = abs(bw_diff), y = `Coverage`)) + 
-  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  geom_point(size = 0.8) + 
+ggplot(sim_res_all, aes(x = abs(bw_diff), y = Coverage, color = icc))+
+  scale_color_manual(values = brewer.pal(3, "Set1")) + 
+  #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  geom_point(size = 1) + 
   scale_y_continuous(name = 'Coverage') + 
   scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
-  geom_smooth(aes(linewidth = icc), method = "loess", se = F,
-              color = "darkred") +
+  geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 18, face = 'bold'),
@@ -905,41 +1002,76 @@ ggplot(sim_res_all, aes(x = abs(bw_diff), y = `Coverage`)) +
         panel.spacing = unit(2, "lines"))
 ggsave(paste0(wd, "coverage.svg"), width = 40, height = 10, units = 'cm')
 
+# fit ind
+ind_df = sim_res_all %>%
+  filter(model != 'Linear Regression') %>%
+  group_by(model, icc) %>%
+  summarise(across(all_of(criteria_fitind), mean)) %>% 
+  group_by(model,icc) %>%
+  slice(1)  %>%
+  pivot_longer(cols = all_of(criteria_fitind), 
+               names_to = 'index',
+               values_to = 'value')
 
-# Power
-ggplot(sim_res_all, aes(x = abs(L2), y = `Power (Not equal 0)`)) + 
-  geom_point(size = 0.8)  + 
-  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  scale_y_continuous(name = 'Power') + 
-  scale_x_continuous(name = 'Absolute Between-Level Effect') + 
-  geom_smooth(aes(linewidth = icc), method = "loess", se = F, color = "darkred")  +
-  theme_minimal()  +
-  facet_wrap(~ model, nrow = 1) + 
-  theme(axis.title = element_text(size = 18, face = 'bold'),
-        axis.text.y = element_text(size = 14),
-        axis.text.x = element_text(size = 14),
-        strip.text = element_text(size = 16),
-        legend.title = element_blank(),
-        legend.text = element_text(size = 16),
-        legend.position = 'bottom',
-        panel.spacing = unit(2, "lines"))
-ggsave(paste0(wd, "power.svg"), width = 40, height = 10, units = 'cm')
+ind_plot_names = c('True Model RMSEA', 'Misspecified Model RMSEA', 
+                   'True Model SRMR', 'Misspecified Model SRMR',
+                   'True Model Chisq', 'Misspecified Model Chisq',
+                   'True Model AIC', 'Misspecified Model AIC',
+                   'True Model BIC', 'Misspecified Model BIC',
+                   'True Model CFI', 'Misspecified Model CFI',
+                   'True Model TLI', 'Misspecified Model TLI')
+ind_df$index = factor(ind_df$index,
+                      levels = criteria_fitind,
+                      labels = ind_plot_names)
 
-# RMSEA
-ggplot(sim_res_all %>% 
-         filter(!model == 'Linear Regression') %>%
-         group_by(model, icc) %>%
-         dplyr::reframe(rmsea.scaled = rmsea.scaled,
-                        model = model,
-                        icc = icc)  %>% 
-         group_by(model,icc) %>%
-         slice(1),
-       aes(y = rmsea.scaled, x = model, fill = icc))  +
+ggplot(ind_df,
+       aes(y = value, x = model, fill = icc))  +
   scale_fill_brewer(palette  = 6) + 
-  geom_bar(aes(y = `rmsea.scaled`, x = model),
-           stat = "identity", position = "dodge") +
-  scale_y_continuous(name = 'RMSEA Scaled') + 
+  geom_bar(aes(y = value, x = model),
+           stat = "identity",
+           position = "dodge", width = 0.6) +
+  scale_y_continuous(name = NULL) + 
   scale_x_discrete(name = NULL) + 
+  theme_minimal() + 
+  theme(axis.title = element_text(size = 18, face = 'bold'),
+        axis.text.y = element_text(size = 18),
+        axis.text.x = element_text(size = 18, face = 'bold'),
+        legend.title = element_blank(),
+        strip.text = element_text(size = 22, face = 'bold'),
+        legend.position = 'bottom',
+        legend.text = element_text(size = 28),
+        panel.spacing = unit(2, "lines"),
+        legend.key.size = unit(2, "lines")) +
+  facet_wrap(~ index, scales = 'free', nrow = 7)
+ggsave(paste0(wd, "fit_ind.svg"), width = 60, height = 40, units = 'cm')
+
+
+##### power
+
+power_df = sim_res_all %>% dplyr::select(L1, L2, 
+                                         `Estimate Average`,
+                                         `Average Param`,
+                                         bw_diff, icc, model,
+                                         power_missp = `Power (Not equal 0)`,
+                                      power_true) %>%
+  mutate(power_diff = power_missp - power_true)%>%
+  filter(L1==0 &L2 ==0) %>%
+  group_by(model, icc) %>%
+  summarise(across(c(power_missp, power_true, power_diff), mean)) %>% 
+  group_by(model,icc) %>%
+  slice(1)  %>%
+  pivot_longer(cols = c(power_missp, power_true, power_diff), 
+               names_to = 'index',
+               values_to = 'value')
+
+ggplot(power_df,
+       aes(y = value, x = model, fill = icc))  +
+  scale_fill_brewer(palette  = 6) + 
+  geom_bar(aes(y = value, x = model),
+           stat = "identity", position = "dodge") +
+  scale_y_continuous(name = NULL) + 
+  scale_x_discrete(name = NULL)+
+  facet_wrap(~ index, scales = 'free', nrow = 7) + 
   theme_minimal() + 
   theme(axis.title = element_text(size = 18, face = 'bold'),
         axis.text.y = element_text(size = 14),
@@ -947,12 +1079,5 @@ ggplot(sim_res_all %>%
         strip.text = element_text(size = 16),
         legend.title = element_blank(),
         legend.text = element_text(size = 16),
-        legend.position = 'bottom')
-ggsave(paste0(wd, "rmsea.svg"), width = 40, height = 10, units = 'cm')
-
-
-
-
-
-
+        legend.position = 'bottom') 
 
