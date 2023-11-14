@@ -809,7 +809,8 @@ perform_anova = function(response, data = sim_res_all, fit = FALSE) {
   #                           paste0(interaction_terms, '+', 'abs(L1)', '+', 'abs(L2)')))
   data %<>% mutate(L1 = abs(L1),
                    L2 = abs(L2),
-                   bw_diff = abs(bw_diff)) %>%
+                   bw_diff = abs(bw_diff),
+                  `Average Bias`= abs(`Average Bias`)) %>%
     dplyr::rename(ICC = icc, 
                   AbsDiff = bw_diff,
                   AbsL1 = L1,
@@ -869,6 +870,10 @@ colnames(eta_main) = c('Term',
                        'Power')
 eta_main$Term = gsub(':', ' : ', eta_main$Term)
 
+summary(sim_res_all$`Rel SE Bias`)
+summary(sim_res_all$Coverage)
+summary(abs(sim_res_all$`Average Bias`))
+
 # writing to word
 library(officer)
 
@@ -917,12 +922,16 @@ wd = 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper
 library(RColorBrewer)
 
 # Average Bias
-ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`), color = icc)) + 
+ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`),
+                        color = icc)) + 
   scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) +
-  scale_color_manual(values = brewer.pal(3, "Set1")) +
+  scale_color_manual(values = brewer.pal(3, "Set1"), 
+                     labels = c(bquote(ICC[x] ~ '= 0.1'),
+                                bquote(ICC[x] ~ '= 0.4'),
+                                bquote(ICC[x] ~ '= 0.7'))) +
   geom_point(size = 1) + 
   scale_y_continuous(name = 'Absolute Bias') + 
-  scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
+  scale_x_continuous(name = 'Absolute Difference between L1 and L2 Effects') + 
   geom_smooth(method = "loess",  se = F, linewidth = 0.7) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal()+ 
@@ -942,13 +951,16 @@ re_se_df = sim_res_all %>%
   pivot_longer(cols = c(L1, L2), names_to = 'L',
                values_to = 'L_value') 
 ggplot(re_se_df %>% filter(L == 'L1'), 
-       aes(x = abs(L_value), y = `SE_ratio`, color = icc))  +
-  scale_color_manual(values = brewer.pal(3, "Set1"))+ 
+       aes(x = abs(L_value), y = `Rel SE Bias`, color = icc))  +
+  scale_color_manual(values = brewer.pal(3, "Set1"), 
+                     labels = c(bquote(ICC[x] ~ '= 0.1'),
+                                bquote(ICC[x] ~ '= 0.4'),
+                                bquote(ICC[x] ~ '= 0.7')))+ 
   #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
   geom_point(size = 1) + 
   scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
   ) + 
-  scale_x_continuous(name = 'Absolute Within-Level Effect') + 
+  scale_x_continuous(name = 'Absolute L1 Effect') + 
   geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
@@ -964,11 +976,14 @@ ggsave(paste0(wd, "rel_se_bias_L1.svg"), width = 40, height = 10, units = 'cm')
 
 ggplot(re_se_df %>% filter(L == 'L2'), 
        aes(x = abs(L_value), y = `Rel SE Bias`, color = icc)) +
-  scale_color_manual(values = brewer.pal(3, "Set1"))+ 
+  scale_color_manual(values = brewer.pal(3, "Set1"), 
+                     labels = c(bquote(ICC[x] ~ '= 0.1'),
+                                bquote(ICC[x] ~ '= 0.4'),
+                                bquote(ICC[x] ~ '= 0.7')))+ 
   #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
   geom_point(size = 1) + 
   scale_y_continuous(name = 'Relative SE Bias') + 
-  scale_x_continuous(name = 'Absolute Between-Level Effect') + 
+  scale_x_continuous(name = 'Absolute L2 Effect') + 
   geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
@@ -984,11 +999,14 @@ ggsave(paste0(wd, "rel_se_bias_L2.svg"), width = 40, height = 10, units = 'cm')
 
 # Coverage
 ggplot(sim_res_all, aes(x = abs(bw_diff), y = Coverage, color = icc))+
-  scale_color_manual(values = brewer.pal(3, "Set1")) + 
+  scale_color_manual(values = brewer.pal(3, "Set1"), 
+                     labels = c(bquote(ICC[x] ~ '= 0.1'),
+                                bquote(ICC[x] ~ '= 0.4'),
+                                bquote(ICC[x] ~ '= 0.7'))) + 
   #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
   geom_point(size = 1) + 
   scale_y_continuous(name = 'Coverage') + 
-  scale_x_continuous(name = 'Absolute Between-Within Effect Difference') + 
+  scale_x_continuous(name = 'Absolute Difference between L1 and L2 Effects') + 
   geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
@@ -1024,25 +1042,48 @@ ind_df$index = factor(ind_df$index,
                       levels = criteria_fitind,
                       labels = ind_plot_names)
 
-ggplot(ind_df,
-       aes(y = value, x = model, fill = icc))  +
-  scale_fill_brewer(palette  = 6) + 
-  geom_bar(aes(y = value, x = model),
-           stat = "identity",
-           position = "dodge", width = 0.6) +
-  scale_y_continuous(name = NULL) + 
-  scale_x_discrete(name = NULL) + 
-  theme_minimal() + 
-  theme(axis.title = element_text(size = 18, face = 'bold'),
-        axis.text.y = element_text(size = 18),
-        axis.text.x = element_text(size = 18, face = 'bold'),
-        legend.title = element_blank(),
-        strip.text = element_text(size = 22, face = 'bold'),
-        legend.position = 'bottom',
-        legend.text = element_text(size = 28),
-        panel.spacing = unit(2, "lines"),
-        legend.key.size = unit(2, "lines")) +
-  facet_wrap(~ index, scales = 'free', nrow = 7)
+ind_vec = c('RMSEA', 'SRMR', 'Chisq', 'AIC', 'BIC', 'CFI', 'TLI')
+ind_plot_list = list()
+for (i in seq_along(ind_vec)){
+  ind_df_current = ind_df %>% filter(grepl(ind_vec[i], index))
+  ind_plot_list[[i]] = ggplot(ind_df_current,
+                         aes(y = value, x = model, fill = icc))  +
+    scale_fill_brewer(palette  = 6, 
+                      labels = c(bquote(ICC[x] ~ '= 0.1'),
+                                 bquote(ICC[x] ~ '= 0.4'),
+                                 bquote(ICC[x] ~ '= 0.7'))) + 
+    geom_bar(aes(y = value, x = model),
+             stat = "identity",
+             position = "dodge", width = 0.6,
+             show.legend = T) +
+    scale_y_continuous(name = NULL) + 
+    scale_x_discrete(name = NULL) + 
+    theme_minimal() + 
+    theme(axis.title = element_text(size = 18, face = 'bold'),
+          axis.text.y = element_text(size = 18),
+          axis.text.x = element_text(size = 18, face = 'bold'),
+          legend.title = element_blank(),
+          strip.text = element_text(size = 22, face = 'bold'),
+          legend.position = 'bottom',
+          legend.text = element_text(size = 28),
+          panel.spacing = unit(2, "lines"),
+          legend.key.size = unit(2, "lines")) +
+    facet_wrap(~ index, scales = 'free', nrow = 1) + 
+    coord_cartesian(ylim = c(0, max(ind_df_current$value))) +
+    theme(strip.background = element_blank())
+}
+
+ggarrange(ind_plot_list[[1]],
+          ind_plot_list[[2]],
+          ind_plot_list[[3]],
+          ind_plot_list[[4]],
+          ind_plot_list[[5]],
+          ind_plot_list[[6]],
+          ind_plot_list[[7]],
+          ncol = 1, nrow = 7, 
+          common.legend = T,
+          legend = 'bottom')
+
 ggsave(paste0(wd, "fit_ind.svg"), width = 60, height = 40, units = 'cm')
 
 
@@ -1050,12 +1091,15 @@ ggsave(paste0(wd, "fit_ind.svg"), width = 60, height = 40, units = 'cm')
 
 power_df = sim_res_all %>% dplyr::select(L1, L2, 
                                          `Estimate Average`,
-                                         `Average Param`,
+                                         `Average Param`, Coverage,
                                          bw_diff, icc, model,
+                                         `Average CI Width`,
+                                         `Not Cover Below`,
+                                         `Not Cover Above`,
                                          power_missp = `Power (Not equal 0)`,
                                       power_true) %>%
-  mutate(power_diff = power_missp - power_true)%>%
-  filter(L1==0 &L2 ==0) %>%
+  #mutate(power_diff = power_missp - power_true)%>%
+  filter(L1==L2) %>%
   group_by(model, icc) %>%
   summarise(across(c(power_missp, power_true, power_diff), mean)) %>% 
   group_by(model,icc) %>%

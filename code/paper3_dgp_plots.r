@@ -262,15 +262,15 @@ dgp_plot = function(fit,
     mutate(label = ifelse(is.na(par), name, paste0(name, '\n', '[', gsub('\\(|\\)', '', par), ']' )))
   edges$color = ifelse(edges$from %in% c('iX', 'iY', 'sX', 'sY') & edges$op == '=~', 'darkgrey', 'black')
 
-
+  #'\u03b4'
   edges$label = ifelse(edges$label == 'k' & method %in% c('lm', 'growth', 'rcclpm'), "\u03B2",
-   ifelse(edges$label == 'k' & method %in% 'rcgclm', "\u03B2'", 
-   ifelse(edges$lavaan_label == 'd_YX' &  method %in% 'rcgclm', '\u03b4', edges$label)))
+   ifelse(edges$label == 'k' & method %in% 'rcgclm', paste0("\u03B2", 1), 
+   ifelse(edges$lavaan_label == 'd_YX' &  method %in% 'rcgclm',  paste0("\u03B2", 2), edges$label)))
 
    
-  edges$color = ifelse(edges$label %in% c("\u03B2", "\u03B2'", '\u03b4'), 'darkred', edges$color)
-  edges$label_colour = ifelse(edges$label %in% c("\u03B2", "\u03B2'", '\u03b4'), 'darkred', 'black')
-  edges$label_fontface  = ifelse(edges$label %in% c("\u03B2", "\u03B2'", '\u03b4'), 'bold', 'plain')
+  edges$color = ifelse(edges$label %in% c("\u03B2",  paste0("\u03B2", 1),  paste0("\u03B2", 2)), 'darkred', edges$color)
+  edges$label_colour = ifelse(edges$label %in% c("\u03B2",  paste0("\u03B2", 1),  paste0("\u03B2", 2)), 'darkred', 'black')
+  edges$label_fontface  = ifelse(edges$label %in% c("\u03B2",  paste0("\u03B2", 1),  paste0("\u03B2", 2)), 'bold', 'plain')
 
   nodes$label = ifelse(grepl('i', nodes$label), 
                      gsub('i', 'i', nodes$label),
@@ -364,7 +364,7 @@ dgp_rcgclm = dgp_plot(fit_rcgclm,
                                   var_iY = '0.6',
                                   var_sY = '0.05',
                                   varY = NA,
-                             method = 'rcgclm')
+                             method = 'rcgclm') 
 
 
 ggarrange(dgp_lm, dgp_growth,
@@ -375,8 +375,8 @@ ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/pap
        width = 40, height = 18, units = 'cm')
 
 ggarrange(dgp_rcclpm, dgp_rcgclm,
-          labels = c('Random Curve Cross-Lagged Panel Model',
-                     'Random Curve General Cross-Lagged Model'),
+          labels = c('RC-CLPM',
+                     'RC-GCLM'),
           ncol = 2, nrow = 1) 
 ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper3/dgp_plot_cross.svg",
        width = 40, height = 18, units = 'cm')
