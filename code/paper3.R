@@ -75,16 +75,16 @@ summarise_simultation = function(true, missp, pars_grid_current){
   
   #for (i in which(converged == T)){
   for (i in seq_along(true)){
-    missp[[i]]@paramValue = as.data.frame(t(colMeans(true[[i]]@coef, na.rm=T)))
-    
-    true_params = summaryParam(true[[i]]) %>% 
+   missp[[i]]@stdParamValue = as.data.frame(t(colMeans(true[[i]]@stdCoef, na.rm=T)))
+   
+    true_params = summaryParam(true[[i]], std = T) %>% 
       dplyr::select(power_true = 'Power (Not equal 0)')
     
-    summary_main = summaryParam(missp[[i]],
+    summary_main_std = summaryParam(missp[[i]],
                                 detail = TRUE,
-                                digits = 3) %>%
+                                digits = 3, std = T) %>%
       rownames_to_column('reg_pars') %>%
-      dplyr::mutate(SE_ratio = `Average SE`/`Estimate SD`)
+      dplyr::mutate(SE_ratio = `Average SE`/`Estimate SD`) 
     
       fit_ind_true = as.data.frame(t(colMeans(inspect(true[[i]], 'fit')[,c(
         "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
@@ -121,6 +121,63 @@ summarise_simultation = function(true, missp, pars_grid_current){
                       #pars_grid_current[which(converged == T),] %>%
                         pars_grid_current %>%
                         slice(rep(1:n(),
+                                  each = ncol(true[[1]]@stdCoef))))
+  
+  
+  
+  return(summary_out)
+}
+
+summarise_simultation_unstd = function(true, missp, pars_grid_current){
+  summary_out = list()
+  
+  for (i in seq_along(true)){
+    missp[[i]]@paramValue = as.data.frame(t(colMeans(true[[i]]@coef, na.rm=T)))
+    
+    true_params = summaryParam(true[[i]], std = F) %>% 
+      dplyr::select(power_true = 'Power (Not equal 0)')
+    
+    summary_main = summaryParam(missp[[i]],
+                                detail = TRUE,
+                                digits = 3, std = F) %>%
+      rownames_to_column('reg_pars') %>%
+      dplyr::mutate(SE_ratio = `Average SE`/`Estimate SD`)
+    
+    fit_ind_true = as.data.frame(t(colMeans(inspect(true[[i]], 'fit')[,c(
+      "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
+      "aic",
+      "bic",
+      "rmsea.scaled",
+      "cfi.scaled", 
+      "tli.scaled", 
+      "srmr",
+      'aic',
+      'bic')])))
+    colnames(fit_ind_true) = paste0('true_', colnames(fit_ind_true))
+    fit_ind_missp = as.data.frame(t(colMeans(inspect(missp[[i]], 'fit')[,c(
+      "chisq.scaled", 'pvalue.scaled', 'baseline.pvalue.scaled',
+      "aic",
+      "bic",
+      "rmsea.scaled",
+      "cfi.scaled", 
+      "tli.scaled", 
+      "srmr",
+      'aic',
+      'bic')])))
+    colnames(fit_ind_missp) = paste0('missp_', colnames(fit_ind_missp))
+    fin_ind_all = cbind(fit_ind_true, fit_ind_missp)
+    
+    summary_out[[i]] = cbind(summary_main, 
+                             true_params,
+                             fin_ind_all %>%
+                               slice(rep(1:n(), nrow(summary_main))))
+    
+  }
+  
+  summary_out = cbind(do.call(rbind.data.frame, summary_out),
+                      #pars_grid_current[which(converged == T),] %>%
+                      pars_grid_current %>%
+                        slice(rep(1:n(),
                                   each = ncol(true[[1]]@coef))))
   
   
@@ -129,11 +186,11 @@ summarise_simultation = function(true, missp, pars_grid_current){
 }
 
 
-sim_res_lm = summarise_simultation(true_out_lm,
-                                   missp_out_lm,
-                                   pars_grid_list[[1]]) %>%
-dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
-                   model = 'lm')
+#sim_res_lm = summarise_simultation(true_out_lm,
+#                                   missp_out_lm,
+#                                   pars_grid_list[[1]]) %>%
+#dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
+#                   model = 'lm')
 
 #
 #icc_range_ = c(0.05, 0.25, 0.45, 0.65, 0.85)
@@ -315,7 +372,7 @@ par_tab_rcclpm = data.frame(
             'var_iY', 'var_iX', 'var_sY', 'var_sX'),
   par = c('(-0.005)', 0.003, '-(0.015)', '(-0.005)', 0.002, '(-0.002)',
           '(0.5)', 'k', '(0.06)', '(0.2)',
-          0.003, 'evarY', 'evarX', 
+          0.002, 'evarY', 'evarX', 
           '(0.4)', '(-0.1)', '(-0.2)', '(0.02)',
           'var_iY', 'var_iX', 'var_sY', 'var_sX')
 )
@@ -469,6 +526,7 @@ gen_data = function(N2) {
   
   ## make sure order of names is consistent
   Sigma2 = Sigma2[rownames(Sigma1), colnames(Sigma1)]
+  nvar = dim(Sigma1)[1]
   
   clusterList = lapply(1:N2, function(x) {
     L2comp = MASS::mvrnorm(n = 1, mu = rep(0, nvar), Sigma = Sigma2)
@@ -595,7 +653,7 @@ true_out_rcclpm = foreach(i = 1:nrow(pars_grid_current),
                                     model = pars_grid_current[i, 'model_est'], 
                                     lavaanfun = 'sem', 
                                     orthogonal = T,
-                                    estimator = 'mlr', 
+                                    estimator = 'mlr',
                                     cluster = "ID")
                       }
 missp_out_rcclpm = foreach(i = 1:nrow(pars_grid_current),
@@ -675,7 +733,7 @@ model_number = 5
 pars_grid_current = pars_grid_list[[model_number]]
 nvar = 14
 model_type = 'cross-lag'
-
+library(simsem)
 tic()
 cl = makeCluster(14)
 registerDoSNOW(cl)                     
@@ -752,38 +810,140 @@ missp_out_rcgclm_long = readRDS('missp_rcgclm_long_7.rds')
 true_out_rcgclm_short = readRDS('true_rcgclm_short_7.rds')
 missp_out_rcgclm_short = readRDS('missp_rcgclm_short_7.rds')
 
+#true_out_rcgclm_short = readRDS('C:/Users/ru21406/OneDrive - University of Bristol/Documents/true_rcgclm_short_7_100.rds')
+#missp_out_rcgclm_short = readRDS('C:/Users/ru21406/OneDrive - University of Bristol/Documents/missp_rcgclm_short_7_100.rds')
+
+
 # Summarizing results
 
-sim_res_lm = summarise_simultation(true_out_lm,
+sim_res_lm = summarise_simultation_unstd(true_out_lm,
                                    missp_out_lm,
                                    pars_grid_list[[1]]) %>%
   dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
                 model = 'lm')
 
-sim_res_growth = summarise_simultation(true_out_growth,
+sim_res_growth = summarise_simultation_unstd(true_out_growth,
                                        missp_out_growth,
                                        pars_grid_list[[2]]) %>%
   dplyr::mutate(reg_pars = if_else(reg_pars == 'b_YX', 'k', reg_pars),
                 model = 'growth')
 
-sim_res_rcclpm = summarise_simultation(true_out_rcclpm,
+sim_res_rcclpm = summarise_simultation_unstd(true_out_rcclpm,
                                        missp_out_rcclpm,
                                        pars_grid_current = pars_grid_list[[3]]) %>%
   dplyr::mutate(reg_pars = if_else(reg_pars == 'd_YX <- (e_Y2~e_X1)', 'k', reg_pars),
                 model = 'rcclpm')
 
-sim_res_rcgclm_long = summarise_simultation(true=true_out_rcgclm_long,
+sim_res_rcgclm_long = summarise_simultation_unstd(true=true_out_rcgclm_long,
                                             missp=missp_out_rcgclm_long,
                                             pars_grid_list[[4]]) %>%
   dplyr::mutate(reg_pars = if_else(reg_pars == 'b_HESP <- (HE3~SP2)', 'k', reg_pars),
                 model = 'rcgclm_long')
 
 
-sim_res_rcgclm_short = summarise_simultation(true_out_rcgclm_short,
+sim_res_rcgclm_short = summarise_simultation_unstd(true_out_rcgclm_short,
                                              missp_out_rcgclm_short,
                                              pars_grid_list[[5]]) %>%
   dplyr::mutate(reg_pars = if_else(reg_pars == 'd_YX <- (Y2~e_X1)', 'k', reg_pars),
                 model = 'rcgclm_short')
+
+N2 = 50
+gen_Sigma = function(two_level = F) {
+  
+  NperC = rep(wg_size, 50)
+  model_L1 = pars_grid_current[i, 'model_L1']
+  model_L2 = pars_grid_current[i, 'model_L2']
+  par_value_L1 = pars_grid_current[i, 'L1']
+  par_value_L2 = pars_grid_current[i, 'L2']
+  
+  k1 = paste0('(', par_value_L1, ')')
+  k2 = paste0('(', par_value_L2, ')')
+  
+  popL1 = gsub('k', k1, model_L1) %>%
+    glue_collapse("\n")
+  popL2 = gsub('k', k2, model_L2) %>%
+    glue_collapse("\n")
+  
+  ## model-implied covariance matrices
+  
+  Sigma1 = fitted(lavaan::sem(popL1,estimator = 'mlr'))$cov
+  Sigma2 = fitted(lavaan::sem(popL2,estimator = 'mlr'))$cov
+  
+  ## make sure order of names is consistent
+  Sigma2 = Sigma2[rownames(Sigma1), colnames(Sigma1)]
+  nvar = dim(Sigma1)[1]
+  
+  clusterList = lapply(1:N2, function(x) {
+    L2comp = MASS::mvrnorm(n = 1, mu = rep(0, nvar), Sigma = Sigma2)
+    dat2 = t(L2comp) %x% rep(1, NperC[x]) # apply to each L1 component
+    dat1 = MASS::mvrnorm(n = NperC[x], mu = rep(0, nvar), Sigma = Sigma1, empirical = T)
+    
+    ## combine components
+    dat = data.frame(dat1 + dat2, ID = rep(x, NperC[x]))
+    dat
+  })
+  
+  if (two_level == F){
+    return(Sigma1)
+  } else{
+    return(cov(do.call(rbind, clusterList)))
+  }
+}  
+
+model_names = c('lm', 'growth', 'rcclpm', 'rcgclm_long', 'rcgclm_short')
+cov_mat = vector("list", length = length(model_names))
+for (j in 1:length(model_names)){
+  model_number = j
+  pars_grid_current = pars_grid_list[[model_number]]
+  model_type = 'cross-lag'  
+  
+  cov_mat[[j]] = vector("list", length = nrow(pars_grid_current[1:7,]))
+  for (i in 1:nrow(pars_grid_current[1:7,])){
+    cov_mat[[j]][[i]] = gen_Sigma()
+  }
+  print(j)
+}
+
+cov_mat[[1]] = do.call(rbind, lapply(cov_mat[[1]], function(x) c(stdev_X = x['X', 'X'], stdev_Y = x['Y', 'Y'])))
+cov_mat[[2]] = do.call(rbind, lapply(cov_mat[[2]], function(x) c(stdev_X = x['X', 'X'], stdev_Y = x['Y1', 'Y1'])))
+cov_mat[[3]] = do.call(rbind, lapply(cov_mat[[3]], function(x) c(stdev_X = x['X1', 'X1'],stdev_Y = x['Y1', 'Y1'])))
+cov_mat[[4]] = do.call(rbind, lapply(cov_mat[[4]], function(x) c(stdev_X = x['X1', 'X1'],stdev_Y = x['Y1', 'Y1'])))
+cov_mat[[5]] = do.call(rbind, lapply(cov_mat[[5]], function(x) c(stdev_X = x['X1', 'X1'],stdev_Y = x['Y1', 'Y1'])))
+cov_mat_df = do.call(rbind, cov_mat)
+
+cov_mat_df = cbind(data.frame(
+  model = rep(model_names, each = nrow(pars_grid_current[1:7,])),
+  L = rep(pars_grid_current[1:7,]$L1, times = length(model_names)),
+  cov_mat_df
+))
+
+
+cov_mat2 = vector("list", length = length(model_names))
+for (j in 1:length(model_names)){
+  model_number = j
+  pars_grid_current = pars_grid_list[[model_number]]
+ 
+  cov_mat2[[j]] = vector("list", length = nrow(pars_grid_current))
+  for (i in 1:nrow(pars_grid_current)){
+    cov_mat2[[j]][[i]] = gen_Sigma(two_level = T)
+  }
+  print(j)
+}
+
+cov_mat2[[1]] = do.call(rbind, lapply(cov_mat2[[1]], function(x) c(stdev_X = x['X', 'X'], stdev_Y = x['Y', 'Y'])))
+cov_mat2[[2]] = do.call(rbind, lapply(cov_mat2[[2]], function(x) c(stdev_X = x['X', 'X'], stdev_Y = x['Y1', 'Y1'])))
+cov_mat2[[3]] = do.call(rbind, lapply(cov_mat2[[3]], function(x) c(stdev_X = x['X1', 'X1'], stdev_Y = x['Y1', 'Y1'])))
+cov_mat2[[4]] = do.call(rbind, lapply(cov_mat2[[4]], function(x) c(stdev_X = x['X1', 'X1'], stdev_Y = x['Y1', 'Y1'])))
+cov_mat2[[5]] = do.call(rbind, lapply(cov_mat2[[5]], function(x) c(stdev_X = x['X1', 'X1'], stdev_Y = x['Y1', 'Y1'])))
+cov_mat2_df = do.call(rbind, cov_mat2)
+
+cov_mat2_df = cbind(data.frame(
+  model = rep(model_names, each = nrow(pars_grid_current)),
+  L1 = rep(pars_grid_current$L1, times = length(model_names)),
+  L2 = rep(pars_grid_current$L2, times = length(model_names)),
+  icc = rep(pars_grid_current$icc, times = length(model_names)),
+  cov_mat2_df
+))
 
 
 sim_res_all = rbind.data.frame(sim_res_lm,
@@ -793,31 +953,36 @@ sim_res_all = rbind.data.frame(sim_res_lm,
                                sim_res_rcgclm_short
                                ) %>%
   filter(reg_pars == 'k') %>%
-  mutate(bw_diff = L1 - L2,
-         rmse = sqrt((`Average Bias`)^2))
+  dplyr::left_join(cov_mat_df, by = c('model', 'L1' = 'L')) %>%
+  dplyr::left_join(cov_mat_df, by = c('model', 'L2' = 'L'),
+                   suffix = c('_L1', '_L2')) %>%
+  dplyr::left_join(cov_mat2_df, by = c('model', 'L1', 'L2', 'icc'))%>%
+  mutate(L1_std = L1*stdev_X_L1/stdev_Y_L1,
+         L2_std = L2*stdev_X_L2/stdev_Y_L2,
+         bw_diff = (L1 - L2),
+         bw_diff_std = (L1_std - L2_std),
+         `Average Bias` = `Average Bias`*stdev_X/stdev_Y)
+
+sim_res_all_lm = sim_res_all %>% filter(model == 'lm' & icc == 0.1 &
+                                          L1 %in% c(0,0.6)&L2 %in% c(0,0.6)) %>%
+  dplyr::select(L1, L2, L1_std, L2_std,stdev_X_L2,
+                stdev_Y_L2, bw_diff, bw_diff_std, icc,
+                `Average Param`, `Estimate Average`, `Estimate SD`, `Average SE`,
+                all_of(criteria_main))
 
 # Define a function to perform the repeated analysis and eta-squared calculation
-perform_anova = function(response, data = sim_res_all, fit = FALSE) {
+perform_anova = function(response, data, fit = FALSE) {
   
   response_quoted = if (grepl(" ", response)) paste("`", response, "`", sep = "") else response
   
-  terms = c('model', 'bw_diff', 'icc')
-  interaction_terms = paste(terms, collapse = "*")
-  
-  # Create the model formula with all interactions
-  #formula = as.formula(paste(response_quoted, "~",
-  #                           paste0(interaction_terms, '+', 'abs(L1)', '+', 'abs(L2)')))
-  data %<>% mutate(L1 = abs(L1),
-                   L2 = abs(L2),
-                   bw_diff = abs(bw_diff),
-                  `Average Bias`= abs(`Average Bias`)) %>%
-    dplyr::rename(ICC = icc, 
-                  AbsDiff = bw_diff,
-                  AbsL1 = L1,
-                  AbsL2 = L2,
-                  Method = model)
+  data %<>% mutate(AbsL1 = abs(L1),
+                   AbsL2 = abs(L2),
+                   AbsDiff = abs(bw_diff_std),
+                  `Average Bias`= abs(`Average Bias`),
+                  ICC = icc,
+                  Method = model) 
   data$ICC = as.factor(data$ICC)
-  formula = paste0(response_quoted, '~ Method*AbsDiff*ICC*AbsL1*AbsL2')
+  formula = paste0(response_quoted, '~ AbsDiff*ICC*AbsL1*AbsL2')
   
   if (fit){
     lm_fit = lm(formula, data = data %<>% filter(!Method == 'lm'))
@@ -838,47 +1003,54 @@ perform_anova = function(response, data = sim_res_all, fit = FALSE) {
   return(eta)
 }
 
-criteria_fitind = c('true_rmsea.scaled', 'missp_rmsea.scaled', 
-                    'true_srmr', 'missp_srmr', 
-                    'true_chisq.scaled', 'missp_chisq.scaled', 
-                    'true_aic', 'missp_aic', 
-                    'true_bic', 'missp_bic',
-                    'true_cfi.scaled',  'missp_cfi.scaled', 
-                    'true_tli.scaled',  'missp_tli.scaled')
-eta_fitind = purrr::reduce(lapply(criteria_fitind, 
-                                  function(x) perform_anova(x, fit = T)), 
+#criteria_fitind = c('true_rmsea.scaled', 'missp_rmsea.scaled', 
+#                    'true_srmr', 'missp_srmr', 
+#                    'true_chisq.scaled', 'missp_chisq.scaled', 
+#                    'true_aic', 'missp_aic', 
+#                    'true_bic', 'missp_bic',
+#                    'true_cfi.scaled',  'missp_cfi.scaled', 
+#                    'true_tli.scaled',  'missp_tli.scaled')
+#eta_fitind = purrr::reduce(lapply(criteria_fitind, 
+#                                  function(x) perform_anova(x, fit = T)), 
+#                           dplyr::left_join, by = 'Term')
+#colnames(eta_fitind) = c('Term', 
+#                         'True RMSEA', 'Missp RMSEA', 
+#                         'True SRMR', 'Missp SRMR',
+#                         'True Chisq', 'Missp Chisq',
+#                         'True AIC', 'Missp AIC',
+#                         'True BIC', 'Missp BIC',
+#                         'True CFI', 'Missp CFI',
+#                         'True TLI', 'Missp TLI')
+#eta_fitind$Term = gsub(':', ' : ', eta_fitind$Term)
+
+criteria_main = c('Average Bias', 
+                  'Rel SE Bias', 'Coverage')
+eta_main_list = list()
+
+for (i in seq_along(model_names)){
+  eta_main_list[[i]] = purrr::reduce(lapply(criteria_main, 
+                                  function(x) perform_anova(response = x,
+                                                            data = sim_res_all[sim_res_all$model == model_names[i],])), 
                            dplyr::left_join, by = 'Term')
-colnames(eta_fitind) = c('Term', 
-                         'True RMSEA', 'Missp RMSEA', 
-                         'True SRMR', 'Missp SRMR',
-                         'True Chisq', 'Missp Chisq',
-                         'True AIC', 'Missp AIC',
-                         'True BIC', 'Missp BIC',
-                         'True CFI', 'Missp CFI',
-                         'True TLI', 'Missp TLI')
-eta_fitind$Term = gsub(':', ' : ', eta_fitind$Term)
-criteria_main = c('Average Bias',
-                    'Rel SE Bias',
-                    'Coverage', 
-                    'Power (Not equal 0)')
-eta_main = purrr::reduce(lapply(criteria_main, perform_anova), 
-                           dplyr::left_join, by = 'Term')
-colnames(eta_main) = c('Term', 
-                       'Average Bias',
-                       'Relative SE Bias',
-                       'Coverage', 
-                       'Power')
-eta_main$Term = gsub(':', ' : ', eta_main$Term)
+  colnames(eta_main_list[[i]]) = c('Term', 
+                         'Average Bias',
+                         'Relative SE Bias',
+                         'Coverage')
+  eta_main_list[[i]]$Term = gsub(':', ' : ', eta_main_list[[i]]$Term)
+}
+
 
 summary(sim_res_all$`Rel SE Bias`)
 summary(sim_res_all$Coverage)
-summary(abs(sim_res_all$`Average Bias`))
+summary(abs(sim_res_all$`Std Bias`))
 
 # writing to word
 library(officer)
 
 # Create a list of data frames
-df_list = list(eta_main,eta_fitind)
+df_list = list(eta_main_list#,
+               #eta_fitind
+               )
 
 # Create a Word document
 doc = read_docx()
@@ -922,16 +1094,18 @@ wd = 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper
 library(RColorBrewer)
 
 # Average Bias
-ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`),
-                        color = icc)) + 
+ggplot(sim_res_all, 
+       aes(x = abs(bw_diff_std), y = abs(`Average Bias`),
+                        color = as.factor(icc))) + 
   scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) +
   scale_color_manual(values = brewer.pal(3, "Set1"), 
                      labels = c(bquote(ICC[x] ~ '= 0.1'),
                                 bquote(ICC[x] ~ '= 0.4'),
                                 bquote(ICC[x] ~ '= 0.7'))) +
-  geom_point(size = 1) + 
-  scale_y_continuous(name = 'Absolute Bias') + 
-  scale_x_continuous(name = 'Absolute Difference between L1 and L2 Effects') + 
+  geom_point() + 
+  #scale_size_continuous(range = c(0.5, 3.5)) +
+  scale_y_continuous(name = 'Absolute Standardised Bias') + 
+  scale_x_continuous(name = 'Absolute Difference between Standardised L1 and L2 Effects') + 
   geom_smooth(method = "loess",  se = F, linewidth = 0.7) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal()+ 
@@ -943,25 +1117,28 @@ ggplot(sim_res_all, aes(x = abs(bw_diff), y = abs(`Average Bias`),
         legend.text = element_text(size = 16),
         legend.position = 'bottom',
         panel.spacing = unit(2, "lines"))
-ggsave(paste0(wd, "average_bias.svg"), width = 40, height = 10, units = 'cm')
+ggsave(paste0(wd, "std_bias.svg"), width = 40, height = 13, units = 'cm')
+
 
 # Rel SE Bias
 re_se_df = sim_res_all %>% 
-  dplyr::select(L1, L2, `Rel SE Bias`,`SE_ratio`, icc, model) %>%
-  pivot_longer(cols = c(L1, L2), names_to = 'L',
+  dplyr::select(L1_std, L2_std, `Rel SE Bias`,`Coverage`, icc, model, bw_diff_std) %>%
+  pivot_longer(cols = c(L1_std, L2_std), names_to = 'L',
                values_to = 'L_value') 
-ggplot(re_se_df %>% filter(L == 'L1'), 
+
+ggplot(re_se_df %>% filter(L == 'L1_std'), 
        aes(x = abs(L_value), y = `Rel SE Bias`, color = icc))  +
   scale_color_manual(values = brewer.pal(3, "Set1"), 
                      labels = c(bquote(ICC[x] ~ '= 0.1'),
                                 bquote(ICC[x] ~ '= 0.4'),
                                 bquote(ICC[x] ~ '= 0.7')))+ 
   #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  geom_point(size = 1) + 
+  geom_point() + 
+  #scale_size_continuous(range = c(0.5, 3.5))+ 
   scale_y_continuous(name = 'Relative SE Bias'#, limits  = c(0,0.5)
   ) + 
-  scale_x_continuous(name = 'Absolute L1 Effect') + 
-  geom_smooth(method = "loess", se = F) +
+  scale_x_continuous(name = 'Absolute Standardised L1 Effect') + 
+  geom_smooth(method = stats::loess, se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
   theme(axis.title = element_text(size = 18, face = 'bold'),
@@ -972,18 +1149,20 @@ ggplot(re_se_df %>% filter(L == 'L1'),
         legend.text = element_text(size = 16),
         legend.position = 'bottom',
         panel.spacing = unit(2, "lines"))
-ggsave(paste0(wd, "rel_se_bias_L1.svg"), width = 40, height = 10, units = 'cm')
+ggsave(paste0(wd, "rel_se_bias_L1.svg"), width = 40, height = 13, units = 'cm')
 
-ggplot(re_se_df %>% filter(L == 'L2'), 
+ggplot(re_se_df %>% filter(L == 'L2_std'), 
        aes(x = abs(L_value), y = `Rel SE Bias`, color = icc)) +
   scale_color_manual(values = brewer.pal(3, "Set1"), 
                      labels = c(bquote(ICC[x] ~ '= 0.1'),
                                 bquote(ICC[x] ~ '= 0.4'),
                                 bquote(ICC[x] ~ '= 0.7')))+ 
   #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  geom_point(size = 1) + 
+  geom_point() + 
+  #scale_size_continuous(range = c(0.5, 3.5))+ 
   scale_y_continuous(name = 'Relative SE Bias') + 
-  scale_x_continuous(name = 'Absolute L2 Effect') + 
+  scale_x_continuous(name = 'Absolute Standardised L2 Effect'#, limits = c(0,0.5)
+                     ) + 
   geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
@@ -995,18 +1174,20 @@ ggplot(re_se_df %>% filter(L == 'L2'),
         legend.text = element_text(size = 16),
         legend.position = 'bottom',
         panel.spacing = unit(2, "lines"))
-ggsave(paste0(wd, "rel_se_bias_L2.svg"), width = 40, height = 10, units = 'cm')
+ggsave(paste0(wd, "rel_se_bias_L2.svg"), width = 40, height = 13, units = 'cm')
 
 # Coverage
-ggplot(sim_res_all, aes(x = abs(bw_diff), y = Coverage, color = icc))+
-  scale_color_manual(values = brewer.pal(3, "Set1"), 
+ggplot(sim_res_all, aes(x = abs(bw_diff_std), y = Coverage, 
+                        color = factor(icc)))+
+ scale_color_manual(values = brewer.pal(3, "Set1"), 
                      labels = c(bquote(ICC[x] ~ '= 0.1'),
                                 bquote(ICC[x] ~ '= 0.4'),
                                 bquote(ICC[x] ~ '= 0.7'))) + 
-  #scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
-  geom_point(size = 1) + 
+  scale_linewidth_manual(values = c(0.3, 0.8, 1.4)) + 
+  geom_point() + 
+  #scale_size_continuous(range = c(0.5, 3.5))+ 
   scale_y_continuous(name = 'Coverage') + 
-  scale_x_continuous(name = 'Absolute Difference between L1 and L2 Effects') + 
+  scale_x_continuous(name = 'Absolute Difference between Standardised L1 and L2 Effects') + 
   geom_smooth(method = "loess", se = F) +
   facet_wrap(~ model, nrow = 1) +
   theme_minimal() + 
@@ -1018,7 +1199,9 @@ ggplot(sim_res_all, aes(x = abs(bw_diff), y = Coverage, color = icc))+
         legend.text = element_text(size = 16),
         legend.position = 'bottom',
         panel.spacing = unit(2, "lines"))
-ggsave(paste0(wd, "coverage.svg"), width = 40, height = 10, units = 'cm')
+ggsave(paste0(wd, "coverage.svg"), width = 40, height = 13, units = 'cm')
+
+
 
 # fit ind
 ind_df = sim_res_all %>%
