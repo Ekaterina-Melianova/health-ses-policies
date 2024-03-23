@@ -86,10 +86,12 @@ dataframe = gen_data(N2=50)
 
 # Function to generate correlated Z within each cluster ID
 generate_correlated_Z <- function(cluster_data) {
+  n=50
   cluster_data <- cluster_data %>%
     group_by(ID) %>%
     mutate(
-      Z = X + Y + rnorm(1, mean = 0, sd = 0.5)
+      Z = X + 
+        Y + rnorm(n, mean = 0, sd = 0.5)
     )
   return(cluster_data)
 }
@@ -117,6 +119,9 @@ summary(temp2.1)
 
 temp3 = dataframe %>% group_by(ID) %>% summarise_all(.funs = mean)
 
+summary(m.z0 <- lme4::lmer(Y ~ X + (1|ID), temp2.1))
+summary(m.z1 <- lme4::lmer(Y ~ X + Z + (1|ID), temp2.1))
+summary(m.z2 <- lm(Y ~ X + Z, temp3))
 
 summary(mx <- lme4::lmer(X ~ 1 + (1|ID), dataframe))
 icc = performance::icc(mx)[[1]]
@@ -131,7 +136,7 @@ summary(m2.1 <- lme4::lmer(Y ~ X_mean + X_demeaned + (1|ID), temp2.1))
 summary(lme4::lmer(Y ~  X_mean + (1|ID), temp2.1))
 summary(lme4::lmer(Y ~  X + (1|ID), temp2.1))
 
-summary(m3 <- lm(Y ~ I(X-mean(X)) , temp2.1))
+summary(m3 <- lm(Y ~ I(X-mean(X)), temp2.1))
 summary(m4 <- lm(Y ~ X_mean , temp2.1))
 summary(m5 <- lm(Y ~ X , temp3))
 summary(m4.1 <- lm(Y ~ X_mean + X_demeaned, temp2.1))

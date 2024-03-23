@@ -15,6 +15,7 @@ library(ggplot2)
 library(data.table)
 library(tictoc)
 library(doParallel)
+library(officer)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
 options(max.print=340)
@@ -97,66 +98,75 @@ for (i in c(policy_names_6,
 df = df %>%
   mutate_at(vars(all_of(health_vars)), ~ -.)
 
-
+# key vectors with names
+lsoa_group = c('lsoa_ses_score1', 'lsoa_ses_score2', 'lsoa_ses_score3')
+dvs = c('samhi_index', 
+        'prop_ibesa',
+        'est_qof_dep', 
+        'antidep_rate',
+        'z_mh_rate')
 
 # final dataset - wide format
 
 dep_vec_3 = paste0(rep(dep_vec, each = 3), 1:3)
-df_lv_1 = lavaan_df(dv = 'samhi_index',
-                    deprivation_cat = 'lsoa_ses_score1',
-                    df = df)
-#df_lv_1 = as.data.frame(na.omit(df_lv_1))
-colnames(df_lv_1)
-df_lv_2 = lavaan_df(dv = 'samhi_index',
-                    deprivation_cat = 'lsoa_ses_score2',
-                    df = df) %>% 
-  filter(lsoa_ses_score2 > 0)
-df_lv_3 = lavaan_df(dv = 'samhi_index',
-                    deprivation_cat = 'lsoa_ses_score3',
-                    df = df) %>% 
-  filter(lsoa_ses_score3 > 0)
+#df_lv_1 = lavaan_df(dv = 'samhi_index',
+#                    deprivation_cat = 'lsoa_ses_score1',
+#                    df = df)
+##df_lv_1 = as.data.frame(na.omit(df_lv_1))
+#colnames(df_lv_1)
+#df_lv_2 = lavaan_df(dv = 'samhi_index',
+#                    deprivation_cat = 'lsoa_ses_score2',
+#                    df = df) %>% 
+#  filter(lsoa_ses_score2 > 0)
+#df_lv_3 = lavaan_df(dv = 'samhi_index',
+#                    deprivation_cat = 'lsoa_ses_score3',
+#                    df = df) %>% 
+#  filter(lsoa_ses_score3 > 0)
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
 # ----------------------------------------------------------------------
 
-# LSOA deprived vs. not deprived
+# free models
 
-# a. free model
-group_free_syntax = RC_GCLM_syntax(multiple = T,
-                                   control = control_names[-c(3,12)])
-group_free_fit_dep_1 = sem(group_free_syntax,
-                           data = df_lv_1, 
-                           estimator = "mlr",
-                           orthogonal = T, 
-                           cluster = 'LAD21CD',
-                           group = 'lsoa_ses_score1')
-beepr::beep()
-gc()
-fm_group_free_dep_1 = fitmeasures(group_free_fit_dep_1, measures)
-#group_free_std = broom::tidy(group_free_fit_dep_1)
+tic()
+cluster = makeCluster(10) 
+registerDoParallel(cluster)
 
-group_free_fit_dep_2 = sem(group_free_syntax,
-                           data = df_lv_2, 
-                           estimator = "mlr",
-                           orthogonal = T, 
-                           cluster = 'LAD21CD',
-                           group = 'lsoa_ses_score2')
-beepr::beep()
-gc()
-fm_group_free_dep_2 = fitmeasures(group_free_fit_dep_2, measures)
+free_models = foreach(dv = dvs, .combine='c',
+                      .packages = c('lavaan', 'tidyverse',
+                                    'dplyr', 'tidyr',
+                                    'magrittr')) %dopar% {
+                                      
+                                      # Data preparation 
+                                      df_lv_1 = lavaan_df(dv = dv, deprivation_cat = 'lsoa_ses_score1', df = df)
+                                      df_lv_2 = lavaan_df(dv = dv, deprivation_cat = 'lsoa_ses_score2', df = df) %>%
+                                        filter(lsoa_ses_score2 > 0)
+                                      df_lv_3 = lavaan_df(dv = dv, deprivation_cat = 'lsoa_ses_score3', df = df) %>%
+                                        filter(lsoa_ses_score3 > 0)
+                                      
+                                      # Modeling for each deprivation category
+                                      group_free_fit_dep_1 = sem(group_free_syntax, data = df_lv_1, estimator = "mlr", orthogonal = T, cluster = 'LAD21CD', group = 'lsoa_ses_score1')
+                                      gc()
+                                      group_free_fit_dep_2 = sem(group_free_syntax, data = df_lv_2, estimator = "mlr", orthogonal = T, cluster = 'LAD21CD', group = 'lsoa_ses_score2')
+                                      gc()
+                                      group_free_fit_dep_3 = sem(group_free_syntax, data = df_lv_3, estimator = "mlr", orthogonal = T, cluster = 'LAD21CD', group = 'lsoa_ses_score3')
+                                      gc()
+                                      
+                                      # Return a list of models for the current dv
+                                      list(group_free_fit_dep_1, group_free_fit_dep_2, group_free_fit_dep_3)
+                                    }
 
-group_free_fit_dep_3 = sem(group_free_syntax,
-                           data = df_lv_3, 
-                           estimator = "mlr",
-                           orthogonal = T, 
-                           cluster = 'LAD21CD',
-                           group = 'lsoa_ses_score3')
-beepr::beep()
-gc()
-fm_group_free_dep_3 = fitmeasures(group_free_fit_dep_3, measures)
+stopCluster(cluster)
+toc()
 
+# Combine every 3 sublists into one and add it to the nested list
+nested_free_models <- list()
+for (i in seq(1, length(free_models), by = 3)) {
+  nested_free_models[[length(nested_free_models) + 1]] <- 
+    list(free_models[[i]], free_models[[i+1]], free_models[[i+2]])
+}
 
-# running constrained models
+# constrained models
 
 equality_params = c('b_HEas1,b_HEas2',
                     'b_HEcs1,b_HEcs2',
@@ -187,28 +197,17 @@ for (i in seq_along(equality_params)){
   
 }
 
-lsoa_group = c('lsoa_ses_score1', 'lsoa_ses_score2', 'lsoa_ses_score3')
-
-list_combined = list()
-i = 1
-for (lsoa in lsoa_group){
-  
-  for (synt in syntax){
-    
-    list_combined[[i]] = list(lsoa, synt)
-    i = i + 1
-    
-  }
-}
 
 groupSEM = function(comb){
   
-  lsoa = comb[[1]]
-  synt = comb[[2]]
+  dvar = comb[[1]]
+  lsoa = comb[[2]]
+  synt = comb[[3]]
+  synt_n = comb[[4]]
   
   list_result = list()
   
-  df_lv = lavaan_df(dv = 'samhi_index',
+  df_lv = lavaan_df(dv = dvar,
                     deprivation_cat = lsoa,
                     df = df)
   df_lv %<>% filter((!!as.name(lsoa)) > 0)
@@ -219,25 +218,48 @@ groupSEM = function(comb){
                          cluster = 'LAD21CD',
                          group = lsoa)
   gc()
-  
-  #list_result[[2]] = as.data.frame(anova(list_result[[1]], group_free_fit))
+
+  # save as .rds
+  #saveRDS(list_result,
+  #               paste0('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/',
+  #                      dvar, '_', lsoa, '_', synt_n, '.rds'))
   
   return(list_result)
-  
+
 }
 
+
+dvs_temp = dvs[3]
+
+list_combined = list()
+i = 1
+for (dv in dvs_temp){
+  
+  for (lsoa in lsoa_group){
+    
+    synt_n = 1
+    
+    for (synt in syntax){
+      
+      list_combined[[i]] = list(dv, lsoa, synt, synt_n)
+        i = i + 1
+        synt_n = synt_n + 1
+      
+    
+    }
+
+  }
+}
+
+
+
 # running
-
-#syntax = syntax[c(5,6)]
-#lsoa_group = lsoa_group[2:3]
-
-list_results_sens = list()
 
 cluster = makeCluster(12) 
 registerDoParallel(cluster)
 
 tic()
-list_results = foreach(comb = list_combined,
+constrained_models = foreach(comb = list_combined,
                        .packages = c('lavaan', 'tidyverse',
                                      'dplyr', 'tidyr',
                                      'magrittr'),
@@ -248,9 +270,9 @@ list_results = foreach(comb = list_combined,
 toc()
 stopCluster(cluster)
 
-
-
-
+saveRDS(constrained_models,
+               paste0('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/',
+                     dvs_temp, '_', 'constrained_models', '.rds'))
 
 # # ----------------------------------------------------------------------
 
@@ -283,193 +305,227 @@ sumstat_dep1 = summarize_data(dat = df_before_scaling,
                                           'Q75' = function(x) quantile(x, probs = 0.75)))
 colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
 
-# 3. Regression Table
+# Other Outputs
 
-section_names = c('Autoregressive Effects',
-                  'Cross-Lagged Effects: Mental Health -> Spending',
-                  'Cross-Lagged Effects: Spending -> Mental Health',
-                  'Fit Measures (Scaled)')
-
-group_free_tab = CoefsExtract(models = c('group_free_fit_dep_1',
-                                         'group_free_fit_dep_2',
-                                         'group_free_fit_dep_3')) %>%
-  dplyr::select(everything(),type = type_1, -type_2)
-
-fit_measures_gf = cbind.data.frame(est.std.x_long_2 = fm_group_free_dep_1,
-                                   est.std.y_long_2 = fm_group_free_dep_2,
-                                   est.std_long_2 = fm_group_free_dep_3,
-                                   
-                                   est.std.x_short_2 = fm_group_free_dep_1,
-                                   est.std.y_short_2 = fm_group_free_dep_2,
-                                   est.std_short_2 = fm_group_free_dep_3)
-fit_measures_gf[] = lapply(fit_measures_gf, sprintf, fmt = "%.3f")
-gf_models_coefs = TableEffects(dat = group_free_tab,
-                               fit_measures = fit_measures_gf,
-                               param_range = 20:32,
-                               section_name_rows = c(1, 8, 14, 20)
-                               )
-gf_models_coefs[10:15,1] = end_new[2:7]
-
-# long-run table
-gf_models_coefs_long = gf_models_coefs %>%
-  dplyr::select(id,
-                contains('long')) %>%
-  dplyr::select(id,
-                contains('.x'),
-                contains('.y'),
-                everything())
-col_gf = c('', 
-           'Model 1', '',
-           'Model 2', '',
-           'Model 3', '')
-gf_models_coefs_long = SubHead(CiSplit(gf_models_coefs_long),
-                               sub_head = c('Top', 'Bottom'),
-                               sub_head_add = c('50%', '50%', 
-                                                '40%', '40%',
-                                                '30%', '30%'),
-                               n = 3,
-                               colnames = col_gf)
-
-# short-run table
-gf_models_coefs_short = gf_models_coefs %>%
-  dplyr::select(id,
-                contains('short')) %>%
-  dplyr::select(id,
-                contains('.x'),
-                contains('.y'),
-                everything())
-gf_models_coefs_short = SubHead(CiSplit(gf_models_coefs_short),
-                               sub_head = c('Top', 'Bottom'),
-                               sub_head_add = c('50%', '50%', 
-                                                '40%', '40%',
-                                                '30%', '30%'),
-                               n = 3,
-                               colnames = col_gf)
-
-# 4. Anova Results
-anova_table = function(list_range, 
-                       free_model){
+mgc_modelling_outputs = function(n_dv){
+  # 3. Regression Table
   
-  anova_list = lapply(list_results[list_range], 
-                      function(model) anova(free_model, model))
+  assign("group_free_fit_dep_1", nested_free_models[[n_dv]][[1]], envir = .GlobalEnv)
+  assign("group_free_fit_dep_2", nested_free_models[[n_dv]][[2]], envir = .GlobalEnv)
+  assign("group_free_fit_dep_3", nested_free_models[[n_dv]][[3]], envir = .GlobalEnv)
   
-  out = rbind.data.frame(anova_list[[1]][1,],
-                         do.call(rbind, lapply(anova_list, function(df) df[2, ])))
-  out = out[-1,]
-  out[] = lapply(out, sprintf, fmt = "%.3f")
-  out$`Constrained Spending` = c(rep(descriptives_names[6:11], 2))
-  out$Dynamic = c(#'Free Model', 
-                  rep('Long-Run', 6),
-                  rep('Short-Run', 6))
-  out %<>% dplyr::select(Dynamic, `Constrained Spending`,
-                         `Chisq diff`, `Pr(>Chisq)`)%>%
-    mutate(Sig = sig_fun(`Pr(>Chisq)`))
-  out[out == 'NA'|out == 'l'] = ''
-  rownames(out) = NULL
+  section_names = c('Autoregressive Effects',
+                    'Cross-Lagged Effects: Mental Health -> Spending',
+                    'Cross-Lagged Effects: Spending -> Mental Health',
+                    'Fit Measures (Scaled)')
   
-  return(out)
-}
-
-anova_1 = anova_table(list_range = 1:12,
-                      free_model = group_free_fit_dep_1)
-anova_2 = anova_table(list_range = 13:24,
-                      free_model = group_free_fit_dep_2)
-anova_3 = anova_table(list_range = 25:36,
-                      free_model = group_free_fit_dep_3)
-anova_all = anova_1 %>%
-  left_join(anova_2, by = c('Constrained Spending', 'Dynamic'))%>%
-  left_join(anova_3, by = c('Constrained Spending', 'Dynamic'))
-#lavTestLRT(group_free_fit_dep_3, list_results[[26]],
-#           method = 'satorra.2000')
-
-
-aov(df$samhi_index ~ df$year)
-
-df_diff = df %>% dplyr::select(LAD21CD, year, samhi_index, lsoa_dep_1) %>%
-  group_by(LAD21CD, year) %>%
-  summarise(lad_samhi_index = mean(samhi_index),
-            lsoa_dep_1 = mean(lsoa_dep_1)) %>%
-  ungroup() %>%
-  pivot_wider(id_cols = c(year), 
-              names_from = lsoa_dep_1,
-              values_from = lad_samhi_index)
-
-mean(df$samhi_index[df$year == 2013 & df$lsoa_dep_1 == 1])
-mean(df$samhi_index[df$year == 2013 & df$lsoa_dep_1 == 2])
-mean(df$samhi_index[df$year == 2019 & df$lsoa_dep_1 == 1])
-mean(df$samhi_index[df$year == 2019 & df$lsoa_dep_1 == 2])
-
-t.test(mean(samhi_dep1_13 - samhi_dep2_13),
-       mean(samhi_dep1_19 - samhi_dep2_19))
-
-
-
-# 5. Substantive
-
-ratio_policy = c()
-df_before_scaling = as.data.frame(df_before_scaling)
-for (i in policy_names_6){
-  ratio_policy = c(ratio_policy, 10/((exp(sd(log(df_before_scaling[,i])))-1)*100)
+  group_free_tab = CoefsExtract(models = c('group_free_fit_dep_1',
+                                           'group_free_fit_dep_2',
+                                           'group_free_fit_dep_3')) %>%
+    dplyr::select(everything(),type = type_1, -type_2)
+  
+  fit_measures_gf = cbind.data.frame(est.std.x_long_2 = fitmeasures(group_free_fit_dep_1, measures),
+                                     est.std.y_long_2 = fitmeasures(group_free_fit_dep_2, measures),
+                                     est.std_long_2 = fitmeasures(group_free_fit_dep_3, measures),
+                                     
+                                     est.std.x_short_2 = fitmeasures(group_free_fit_dep_1, measures),
+                                     est.std.y_short_2 = fitmeasures(group_free_fit_dep_2, measures),
+                                     est.std_short_2 = fitmeasures(group_free_fit_dep_3, measures))
+  fit_measures_gf[] = lapply(fit_measures_gf, sprintf, fmt = "%.3f")
+  gf_models_coefs = TableEffects(dat = group_free_tab,
+                                 fit_measures = fit_measures_gf,
+                                 param_range = 20:32,
+                                 section_name_rows = c(1, 8, 14, 20)
   )
+  gf_models_coefs[10:15,1] = end_new[2:7]
+  
+  # long-run table
+  gf_models_coefs_long = gf_models_coefs %>%
+    dplyr::select(id,
+                  contains('long')) %>%
+    dplyr::select(id,
+                  contains('.x'),
+                  contains('.y'),
+                  everything())
+  col_gf = c('', 
+             'Model 1', '',
+             'Model 2', '',
+             'Model 3', '')
+  gf_models_coefs_long = SubHead(CiSplit(gf_models_coefs_long),
+                                 sub_head = c('Top', 'Bottom'),
+                                 sub_head_add = c('50%', '50%', 
+                                                  '40%', '40%',
+                                                  '30%', '30%'),
+                                 n = 3,
+                                 colnames = col_gf)
+  
+  # short-run table
+  gf_models_coefs_short = gf_models_coefs %>%
+    dplyr::select(id,
+                  contains('short')) %>%
+    dplyr::select(id,
+                  contains('.x'),
+                  contains('.y'),
+                  everything())
+  gf_models_coefs_short = SubHead(CiSplit(gf_models_coefs_short),
+                                  sub_head = c('Top', 'Bottom'),
+                                  sub_head_add = c('50%', '50%', 
+                                                   '40%', '40%',
+                                                   '30%', '30%'),
+                                  n = 3,
+                                  colnames = col_gf)
+  
+  # 4. Anova Results
+  anova_table = function(list_range, 
+                         free_model){
+    
+    anova_list = lapply(constrained_models[list_range], 
+                        function(model) anova(free_model, model))
+    
+    out = rbind.data.frame(anova_list[[1]][1,],
+                           do.call(rbind, lapply(anova_list, function(df) df[2, ])))
+    out = out[-1,]
+    out[] = lapply(out, sprintf, fmt = "%.3f")
+    out$`Constrained Spending` = c(rep(descriptives_names[6:11], 2))
+    out$Dynamic = c(#'Free Model', 
+      rep('Long-Run', 6),
+      rep('Short-Run', 6))
+    out %<>% dplyr::select(Dynamic, `Constrained Spending`,
+                           `Chisq diff`, `Pr(>Chisq)`)%>%
+      mutate(Sig = sig_fun(`Pr(>Chisq)`))
+    out[out == 'NA'|out == 'l'] = ''
+    rownames(out) = NULL
+    
+    return(out)
+  }
+  
+  anova_1 = anova_table(list_range = 1:12,
+                        free_model = group_free_fit_dep_1)
+  anova_2 = anova_table(list_range = 13:24,
+                        free_model = group_free_fit_dep_2)
+  anova_3 = anova_table(list_range = 25:36,
+                        free_model = group_free_fit_dep_3)
+  anova_all = anova_1 %>%
+    left_join(anova_2, by = c('Constrained Spending', 'Dynamic'))%>%
+    left_join(anova_3, by = c('Constrained Spending', 'Dynamic'))
+  
+  
+  # 5. Substantive
+  
+  ratio_policy = c()
+  df_before_scaling = as.data.frame(df_before_scaling)
+  for (i in policy_names_6){
+    ratio_policy = c(ratio_policy, 10/((exp(sd(log(df_before_scaling[,i])))-1)*100)
+    )
+    
+  }
+  id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
+  ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
+  
+  # transforming
+  pct_coefs = CoefsExtract(models = c('group_free_fit_dep_1',
+                                      'group_free_fit_dep_2',
+                                      'group_free_fit_dep_3'),
+                           standardized = F,
+                           controls = NULL,
+                           df_transform = ratio_df) %>% 
+    filter(type_1 == 'c_policy') %>%
+    dplyr::select(everything(),type = type_1, -type_2)
+  
+  
+  pct_coefs$id = c('Adult Social Care',
+                   'Children Social Care',
+                   'Healthcare',
+                   'Environment',
+                   'Law and Order',
+                   'Infrastructure')
+  gf_pct_coefs = TableEffects(dat = pct_coefs,
+                              fit_measures = fit_measures_gf,
+                              param_range = 7:19,
+                              subsections = F)
+  
+  # long-run table
+  gf_pct_coefs_long = gf_pct_coefs %>%
+    dplyr::select(id,
+                  contains('long')) %>%
+    #left_join(anova_all, by = d) %>%
+    dplyr::select(id,
+                  contains('.x'),
+                  contains('.y'),
+                  everything())
+  gf_models_coefs_long = SubHead(CiSplit(gf_pct_coefs_long),
+                                 sub_head = c('Top', 'Bottom'),
+                                 sub_head_add = c('50%', '50%', 
+                                                  '40%', '40%',
+                                                  '30%', '30%'),
+                                 n = 3,
+                                 colnames = col_gf)
+  
+  # short-run table
+  gf_pct_coefs_short = gf_pct_coefs %>%
+    dplyr::select(id,
+                  contains('short')) %>%
+    dplyr::select(id,
+                  contains('.x'),
+                  contains('.y'),
+                  everything())
+  gf_models_coefs_short = SubHead(CiSplit(gf_pct_coefs_short),
+                                  sub_head = c('Top', 'Bottom'),
+                                  sub_head_add = c('50%', '50%', 
+                                                   '40%', '40%',
+                                                   '30%', '30%'),
+                                  n = 3,
+                                  colnames = col_gf)
+  
+  return(list(gf_models_coefs_short,
+              gf_models_coefs_long,
+              anova_all))
   
 }
-id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
-ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
 
-# transforming
-pct_coefs = CoefsExtract(models = c('group_free_fit_dep_1',
-                                    'group_free_fit_dep_2',
-                                    'group_free_fit_dep_3'),
-                        standardized = F,
-                        controls = NULL,
-                        df_transform = ratio_df) %>% 
-  filter(type_1 == 'c_policy') %>%
-  dplyr::select(everything(),type = type_1, -type_2)
+out_dvs = list()
+for (i in 1:length(dvs)){
+  out_dvs[[i]] = mgc_modelling_outputs(n_dv = i)
+  print(i)
+}
 
+# Create a Word document
+doc = read_docx()
 
-pct_coefs$id = c('Adult Social Care',
-                'Children Social Care',
-                'Healthcare',
-                'Environment',
-                'Law and Order',
-                'Infrastructure')
-gf_pct_coefs = TableEffects(dat = pct_coefs,
-                            fit_measures = fit_measures_gf,
-                            param_range = 7:19,
-                            subsections = F)
+# treating empty colnames in officer
+replace_empty_colnames = function(df) {
+  colnames = names(df)
+  empty_cols = colnames[colnames == ""]
+  if (length(empty_cols) > 0) {
+    colnames[colnames == ""] = "RRR"
+    colnames(df) = colnames
+  }
+  return(df)
+}
+out_dvs = lapply(out_dvs, function(x) lapply(x, replace_empty_colnames))
 
-# long-run table
-gf_pct_coefs_long = gf_pct_coefs %>%
-  dplyr::select(id,
-                contains('long')) %>%
-  #left_join(anova_all, by = d) %>%
-  dplyr::select(id,
-                contains('.x'),
-                contains('.y'),
-                everything())
-gf_models_coefs_long = SubHead(CiSplit(gf_pct_coefs_long),
-                               sub_head = c('Top', 'Bottom'),
-                               sub_head_add = c('50%', '50%', 
-                                                '40%', '40%',
-                                                '30%', '30%'),
-                               n = 3,
-                               colnames = col_gf)
+# Loop over the list of data frames and add them to the document
+for (i in seq_along(out_dvs)) {
+  for (j in seq_along(out_dvs[[i]])){
+    doc = doc %>% 
+      body_add_table(out_dvs[[i]][[j]])    
+    # Add a page break after each table
+    if (j < length(out_dvs[[i]])) {
+      doc = doc %>% 
+        body_add_break()
+    }
+  }
+  # Add a page break after each table
+  if (i < length(out_dvs)) {
+    doc = doc %>% 
+      body_add_break()
+  }
+  
+}
 
-# short-run table
-gf_pct_coefs_short = gf_pct_coefs %>%
-  dplyr::select(id,
-                contains('short')) %>%
-  dplyr::select(id,
-                contains('.x'),
-                contains('.y'),
-                everything())
-gf_models_coefs_short = SubHead(CiSplit(gf_pct_coefs_short),
-                                sub_head = c('Top', 'Bottom'),
-                                sub_head_add = c('50%', '50%', 
-                                                 '40%', '40%',
-                                                 '30%', '30%'),
-                                n = 3,
-                                colnames = col_gf)
+# Save the document
+print(doc, target = "C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/paper2_tabs.docx")
+
 
 # # ----------------------------------------------------------------------
 

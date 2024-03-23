@@ -267,7 +267,10 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   
   if (resid_stationary == T){
       if (multiple == T){
-    Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ c(evar{.x}{1}, evar{.x}{2})*e_{.x}{1:max_time}")%>%
+    #Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ c(evar{.x}{1}, evar{.x}{2})*e_{.x}{1:max_time}")%>%
+    #                  glue_collapse("\n")) %>%
+    #  glue_collapse("\n")
+    Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ evar{.x}*e_{.x}{1:max_time}")%>%
                       glue_collapse("\n")) %>%
       glue_collapse("\n")
   } else{
@@ -429,10 +432,15 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
       if (resid_stationary == T){
         
         if (multiple == T){
-        s %<>%
-          dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ c(ecov_{x}{y}1, ecov_{x}{y}2)*e_{y}{i}")
-          ) %>%
-          pull(!!sym(col_name))
+        #s %<>%
+        #  dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ c(ecov_{x}{y}1, ecov_{x}{y}2)*e_{y}{i}")
+        #  ) %>%
+        #  pull(!!sym(col_name))
+          
+          s %<>%
+            dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ ecov_{x}{y}*e_{y}{i}")
+            ) %>%
+            pull(!!sym(col_name))
                 }else{
         s %<>%
           dplyr::mutate(!!sym(col_name) := glue("e_{x}{i} ~~ ecov_{x}{y}*e_{y}{i}")
