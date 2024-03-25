@@ -18,7 +18,7 @@ library(doParallel)
 library(officer)
 
 source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
-options(max.print=340)
+options(max.print=50)
 
 # pre-processing
 
@@ -159,12 +159,6 @@ free_models = foreach(dv = dvs, .combine='c',
 stopCluster(cluster)
 toc()
 
-# Combine every 3 sublists into one and add it to the nested list
-nested_free_models <- list()
-for (i in seq(1, length(free_models), by = 3)) {
-  nested_free_models[[length(nested_free_models) + 1]] <- 
-    list(free_models[[i]], free_models[[i+1]], free_models[[i+2]])
-}
 
 # constrained models
 
@@ -274,6 +268,46 @@ saveRDS(constrained_models,
                paste0('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/',
                      dvs_temp, '_', 'constrained_models', '.rds'))
 
+## read
+#samhi_index_constrained_models <- readRDS("samhi_index_constrained_models.rds")
+#antidep_rate_constrained_models <- readRDS("antidep_rate_constrained_models.rds")
+#est_qof_dep_constrained_models <- readRDS("est_qof_dep_constrained_models.rds")
+#prop_ibesa_constrained_models <- readRDS("prop_ibesa_constrained_models.rds")
+#z_mh_rate_constrained_models <- readRDS("z_mh_rate_constrained_models.rds")
+#
+## save constrained models as .rds
+#saveRDS(list(samhi_index_constrained_models,
+#             prop_ibesa_constrained_models,
+#             est_qof_dep_constrained_models,
+#             antidep_rate_constrained_models,
+#             z_mh_rate_constrained_models),
+#         paste0('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/',
+#                'constrained_models', '.rds'))
+#
+## remove separate all lists with constrained models
+#rm(samhi_index_constrained_models,
+#   prop_ibesa_constrained_models,
+#   est_qof_dep_constrained_models,
+#   antidep_rate_constrained_models,
+#   z_mh_rate_constrained_models)
+#gc()
+
+# read
+setwd('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2')
+tic()
+free_models <- readRDS("free_models.rds")
+#constrained_models <- readRDS("constrained_models.rds")
+toc()
+gc()
+
+# Combine every 3 sublists into one and add it to the nested list
+nested_free_models <- list()
+for (i in seq(1, length(free_models), by = 3)) {
+  nested_free_models[[length(nested_free_models) + 1]] <- 
+    list(free_models[[i]], free_models[[i+1]], free_models[[i+2]])
+}
+rm(free_models)
+
 # # ----------------------------------------------------------------------
 
 # Output
@@ -307,22 +341,19 @@ colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
 
 # Other Outputs
 
-mgc_modelling_outputs = function(n_dv){
+section_names = c('Autoregressive Effects',
+                  'Cross-Lagged Effects: Mental Health -> Spending',
+                  'Cross-Lagged Effects: Spending -> Mental Health',
+                  'Fit Measures (Scaled)')
+
+# main summary function
+mgc_modelling_outputs = function(lst_constrained){
   # 3. Regression Table
-  
-  assign("group_free_fit_dep_1", nested_free_models[[n_dv]][[1]], envir = .GlobalEnv)
-  assign("group_free_fit_dep_2", nested_free_models[[n_dv]][[2]], envir = .GlobalEnv)
-  assign("group_free_fit_dep_3", nested_free_models[[n_dv]][[3]], envir = .GlobalEnv)
-  
-  section_names = c('Autoregressive Effects',
-                    'Cross-Lagged Effects: Mental Health -> Spending',
-                    'Cross-Lagged Effects: Spending -> Mental Health',
-                    'Fit Measures (Scaled)')
-  
-  group_free_tab = CoefsExtract(models = c('group_free_fit_dep_1',
+   group_free_tab = CoefsExtract(models = c('group_free_fit_dep_1',
                                            'group_free_fit_dep_2',
                                            'group_free_fit_dep_3')) %>%
     dplyr::select(everything(),type = type_1, -type_2)
+   gc()
   
   fit_measures_gf = cbind.data.frame(est.std.x_long_2 = fitmeasures(group_free_fit_dep_1, measures),
                                      est.std.y_long_2 = fitmeasures(group_free_fit_dep_2, measures),
@@ -377,10 +408,26 @@ mgc_modelling_outputs = function(n_dv){
   
   # 4. Anova Results
   anova_table = function(list_range, 
-                         free_model){
+                         free_model,
+                         constrained = lst_constrained){
     
-    anova_list = lapply(constrained_models[list_range], 
-                        function(model) anova(free_model, model))
+    # if error in the following return NA
+    anova_list = lapply(constrained[list_range], function(model) {
+      tryCatch({
+        as.data.frame(anova(free_model, model))
+      }, error = function(e) {
+        error_mod = data.frame('Df' = c(NA,NA),
+                               'AIC' = c(NA,NA),
+                               'BIC' = c(NA,NA),
+                               'Chisq' = c(NA,NA),
+                               'Chisq diff' = c(NA,NA),
+                              'Df diff' = c(NA,NA),
+                               'Pr(>Chisq)' =c(NA,NA))
+        colnames(error_mod) = c('Df', 'AIC', 'BIC', 'Chisq', 'Chisq diff', 'Df diff', 'Pr(>Chisq)')
+        rownames(error_mod) = c('free_model', 'model')
+        return(error_mod)
+      })
+    })
     
     out = rbind.data.frame(anova_list[[1]][1,],
                            do.call(rbind, lapply(anova_list, function(df) df[2, ])))
@@ -477,21 +524,13 @@ mgc_modelling_outputs = function(n_dv){
                                   n = 3,
                                   colnames = col_gf)
   
-  return(list(gf_models_coefs_short,
-              gf_models_coefs_long,
-              anova_all))
+  return(list(as.data.frame(gf_models_coefs_short),
+                     as.data.frame(gf_models_coefs_long),
+                     as.data.frame(anova_all)))
   
 }
 
-out_dvs = list()
-for (i in 1:length(dvs)){
-  out_dvs[[i]] = mgc_modelling_outputs(n_dv = i)
-  print(i)
-}
-
-# Create a Word document
-doc = read_docx()
-
+## Out
 # treating empty colnames in officer
 replace_empty_colnames = function(df) {
   colnames = names(df)
@@ -502,29 +541,52 @@ replace_empty_colnames = function(df) {
   }
   return(df)
 }
-out_dvs = lapply(out_dvs, function(x) lapply(x, replace_empty_colnames))
 
-# Loop over the list of data frames and add them to the document
-for (i in seq_along(out_dvs)) {
-  for (j in seq_along(out_dvs[[i]])){
-    doc = doc %>% 
-      body_add_table(out_dvs[[i]][[j]])    
-    # Add a page break after each table
-    if (j < length(out_dvs[[i]])) {
+
+#
+list_names = c('samhi_index_constrained_models',
+               'antidep_rate_constrained_models',
+               'est_qof_dep_constrained_models',
+               'prop_ibesa_constrained_models',
+               'z_mh_rate_constrained_models')
+tic()
+for (i in 1:length(dvs)){
+
+  assign("group_free_fit_dep_1", nested_free_models[[i]][[1]], envir = .GlobalEnv)
+  assign("group_free_fit_dep_2", nested_free_models[[i]][[2]], envir = .GlobalEnv)
+  assign("group_free_fit_dep_3", nested_free_models[[i]][[3]], envir = .GlobalEnv)
+  
+  out_dvs = mgc_modelling_outputs(lst_constrained = readRDS(paste0(list_names[i], ".rds")))
+
+  # Create a Word document
+  doc = read_docx()
+  out_dvs = lapply(out_dvs, replace_empty_colnames)
+  
+  # Loop over the list of data frames and add them to the document
+  for (j in seq_along(out_dvs)) {
       doc = doc %>% 
-        body_add_break()
-    }
-  }
-  # Add a page break after each table
-  if (i < length(out_dvs)) {
-    doc = doc %>% 
-      body_add_break()
+        body_add_table(out_dvs[[j]])    
+      # Add a page break after each table
+      if (j < length(out_dvs)) {
+        doc = doc %>% 
+          body_add_break()
+      }
   }
   
+  # Save the document
+  target_name = paste0("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/paper2_tabs_",
+                       dvs[i], '.docx')
+  print(doc,
+        target = target_name)
+  
+  print(i)
+  
 }
+toc()
+gc()
+beepr::beep()
 
-# Save the document
-print(doc, target = "C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/paper2_tabs.docx")
+
 
 
 # # ----------------------------------------------------------------------

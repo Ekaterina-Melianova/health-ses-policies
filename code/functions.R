@@ -1240,7 +1240,7 @@ TableEffects = function(dat = effects_all,
                         subsections = T,
                         .section_names = section_names,
                         fit_measures = NULL) {
-  
+  library(dplyr)
   patterns = c("~HE|HE~#",
                "~as|as~#",
                "~cs|cs~#",
@@ -1255,12 +1255,12 @@ TableEffects = function(dat = effects_all,
                         'g_other_policies',
                         'h_controls',
                         'i_cor')) %>%
-    mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
+    dplyr::mutate(id = reduce(patterns, function(x, y) if_else(grepl(y, x),
                                                         .end_new[match(y, patterns)], x), 
                        .init = id)) %>%
     rbind.fill(., fit_measures %>% rownames_to_column("id") %>% 
-                 mutate(id = str_remove(id, ".scaled"))) %>%
-    mutate(across(1, ~replace(.x, param_range, .parameters)))
+                 dplyr::mutate(id = str_remove(id, ".scaled"))) %>%
+    dplyr::mutate(across(1, ~replace(.x, param_range, .parameters)))
   
   if (subsections == T){
       # subsections in a table
@@ -1268,8 +1268,8 @@ TableEffects = function(dat = effects_all,
       dat = tibble::add_row(dat, .before = i)
       }
     dat = dat %>%
-      mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
-      mutate_all(~ ifelse(is.na(.), "", .)) %>%
+      dplyr::mutate(across(1, ~replace(.x, is.na(.x), .section_names)))%>%
+      dplyr::mutate_all(~ ifelse(is.na(.), "", .)) %>%
       select(-type)
   } else{
     dat = dat %>%
