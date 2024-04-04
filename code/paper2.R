@@ -495,19 +495,26 @@ mgc_modelling_outputs = function(lst_constrained){
   gf_pct_coefs_long = gf_pct_coefs %>%
     dplyr::select(id,
                   contains('long')) %>%
-    #left_join(anova_all, by = d) %>%
     dplyr::select(id,
                   contains('.x'),
                   contains('.y'),
                   everything())
+  
+  colnames(gf_pct_coefs_long)[1] = 'Constrained Spending'
+    gf_pct_coefs_long = merge(gf_pct_coefs_long, 
+               anova_all %>% filter(Dynamic == 'Long-Run') %>%
+                 dplyr::select(c(`Constrained Spending`,
+                                 grep('Sig', colnames(anova_all)))),
+               no.dups = T, all = T, sort = F)
+  gf_pct_coefs_long = gf_pct_coefs_long[,c(1:3,8, 4:5,9,6:7,10)]
+  
   gf_models_coefs_long = SubHead(CiSplit(gf_pct_coefs_long),
-                                 sub_head = c('Top', 'Bottom'),
-                                 sub_head_add = c('50%', '50%', 
-                                                  '40%', '40%',
-                                                  '30%', '30%'),
+                                 sub_head = c('Top', 'Bottom', 'ANOVA Sig'),
+                                 sub_head_add = c('50%', '50%', '',
+                                                  '40%', '40%', '',
+                                                  '30%', '30%', ''),
                                  n = 3,
                                  colnames = col_gf)
-  
   # short-run table
   gf_pct_coefs_short = gf_pct_coefs %>%
     dplyr::select(id,
@@ -516,11 +523,20 @@ mgc_modelling_outputs = function(lst_constrained){
                   contains('.x'),
                   contains('.y'),
                   everything())
+  
+  colnames(gf_pct_coefs_short)[1] = 'Constrained Spending'
+  gf_pct_coefs_short = merge(gf_pct_coefs_short, 
+                            anova_all %>% filter(Dynamic == 'Long-Run') %>%
+                              dplyr::select(c(`Constrained Spending`,
+                                              grep('Sig', colnames(anova_all)))),
+                            no.dups = T, all = T, sort = F)
+  gf_pct_coefs_short = gf_pct_coefs_short[,c(1:3,8, 4:5,9,6:7,10)]
+  
   gf_models_coefs_short = SubHead(CiSplit(gf_pct_coefs_short),
-                                  sub_head = c('Top', 'Bottom'),
-                                  sub_head_add = c('50%', '50%', 
-                                                   '40%', '40%',
-                                                   '30%', '30%'),
+                                  sub_head = c('Top', 'Bottom', 'ANOVA Sig'),
+                                  sub_head_add = c('50%', '50%', '',
+                                                   '40%', '40%', '',
+                                                   '30%', '30%', ''),
                                   n = 3,
                                   colnames = col_gf)
   
