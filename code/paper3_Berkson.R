@@ -19,7 +19,7 @@ gen_data = function(confounding_within=1.5,
                     n_groups = 100,
                     true_between = 0.5,
                     true_within = 0,
-                    rand_effect_C_U = 0.5, 
+                    rand_effect_C_U = 0.3, 
                     sd_rand_effect_C_U = 1){
 set.seed(123)
   cor_int = data.frame(matrix(NA, nrow = n_groups, ncol = 5))
@@ -78,14 +78,19 @@ set.seed(123)
   # aggregate data
   dat = dat %>% 
     dplyr::group_by(ID) %>% 
-    dplyr::mutate(X_bar = mean(X),
+    dplyr::mutate(X = scale(X),
+                  Y = scale(Y),
+                  C = scale(C),
+                  X_bar = mean(X),
                   Y_bar = mean(Y),
+                  C_bar = mean(C),
                   X_centered = X - X_bar,
-                  C_bar = mean(C)
+                  C_centered = C - C_bar
     ) %>%
-    ungroup() %>%
-    dplyr::mutate(X_centered = scale(X_centered),
-                  Y = scale(Y))
+    ungroup()# %>%
+    #dplyr::mutate(X_centered = scale(X_centered),
+    #              C_centered = scale(C_centered),
+     #             Y = scale(Y))
   
 
   
@@ -224,7 +229,7 @@ names(data_list) = paste0('rand', rep(grid_rand, each = length(grid_w)),
 
 # simulating
 analyzeFUN = function(dat) {
-  out = lme4::lmer(Y ~ X_centered + (1|ID), data = dat)
+  out = lme4::lmer(Y ~ X_centered + C_centered (1 + X_centered |ID), data = dat)
   coef = fixef(out)['X_centered']
   se = sqrt(diag(vcov(out)))['X_centered']
   fit = c(loglik = as.numeric(logLik(out)))

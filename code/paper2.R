@@ -329,15 +329,89 @@ nonstationary = c('samhi_index',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-sumstat_dep1 = summarize_data(dat = df_before_scaling,
-                              group = 'lsoa_ses_score1',
+df_before_scaling$imd_year = case_when(df_before_scaling$year == 2013 &
+                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_1',
+                                       df_before_scaling$year == 2013 &
+                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_3',
+                                       df_before_scaling$year == 2019 &
+                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_2',
+                                       df_before_scaling$year == 2019 &
+                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_4',
+                                       TRUE ~ 'other')
+table(df_before_scaling$imd_year)
+
+# Z-scores for health
+df_before_scalingZ = df_before_scaling
+for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+  df_before_scalingZ[, i] = scale(df_before_scaling[, i])
+}
+
+sumstat_dep1 = summarize_data(dat = df_before_scalingZ %>% filter(!imd_year == 'other'),
+                              .stationary = stationary[-11],
+                              group = 'imd_year',
                               rownames = nm_out[-c(14,23)],
-                              quant = T,
+                              quant = F,
                               stat = list('Mean' = mean,
-                                          'SD' = sd,
-                                          'Q25' = function(x) quantile(x, probs = 0.25),
-                                          'Q75' = function(x) quantile(x, probs = 0.75)))
-colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
+                                          'SD' = sd#,
+                                          #'Q25' = function(x) quantile(x, probs = 0.25),
+                                          #'Q75' = function(x) quantile(x, probs = 0.75)
+                                          )
+                              )
+for (i in c(2,8,15)) {
+  sumstat_dep1 = tibble::add_row(sumstat_dep1, .before = i)
+}
+sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var1" = '', .after = 5)
+sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var2" = '', .after = 10)
+
+section_subnames = c('Health Indicators', 'Spending, £ per capita', 'Controls')
+sumstat_dep1 = sumstat_dep1 %>%
+  dplyr::mutate(across(1, ~replace(.x, is.na(.x), section_subnames))) %>%
+  dplyr::mutate_all(~ ifelse(is.na(.), "", .)) 
+
+#colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
+colnames(sumstat_dep1) = c('',
+                           '2013 Top 50%', '', '2019 Top 50%', '',
+                           'SD or Percentage Change Top 50%', 
+                           '2013 Bottom 50%', '', '2019 Bottom 50%', '',
+                           'SD or Percentage Change Top 50%')
+
+quantile(df_before_scaling$SD[df_before_scaling$lsoa_ses_score1==2])
+sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==1])
+sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==2])
+
+# temporal distance
+df_imd_dist = df_before_scaling %>% 
+  filter(year %in% c(2013, 2019)) %>%
+  dplyr::select(c(all_of(nonstationary), LAD21CD, year, lsoa_ses_score1))  %>%
+  dplyr::group_by(LAD21CD, year,lsoa_ses_score1) %>%
+  dplyr::mutate(across(all_of(nonstationary), mean, na.rm = T)) %>%
+  dplyr::group_by(year,LAD21CD,lsoa_ses_score1) %>%
+  sample_n(1) %>%
+  pivot_wider(id_cols = LAD21CD, names_from = c(year,lsoa_ses_score1), 
+              values_from = all_of(nonstationary)) %>%
+  dplyr::mutate(samhi_index_prop = (samhi_index_2019 - samhi_index_2013)/samhi_index_2013,
+                prop_ibesa_prop = (prop_ibesa_2019 - prop_ibesa_2013)/prop_ibesa_2013,
+                est_qof_dep_prop = (est_qof_dep_2019 - est_qof_dep_2013)/est_qof_dep_2013,
+                antidep_rate_prop = (antidep_rate_2019 - antidep_rate_2013)/antidep_rate_2013,
+                z_mh_rate_prop = (z_mh_rate_2019 - z_mh_rate_2013)/z_mh_rate_2013,
+                social_care_adult_prop = (social_care_adult_2019 - social_care_adult_2013)/social_care_adult_2013,
+                social_care_children_prop = (social_care_children_2019 - social_care_children_2013)/social_care_children_2013,
+                healthcare_prop = (healthcare_2019 - healthcare_2013)/healthcare_2013,
+                env_prop = (env_2019 - env_2013)/env_2013,
+                law_order_prop = (law_order_2019 - law_order_2013)/law_order_2013,
+                infrastructure_prop = (infrastructure_2019 - infrastructure_2013)/infrastructure_2013)
+  
+# lm
+df_lad <- df_before_scaling %>%
+  dplyr::select(c(nonstationary, LAD21CD,
+                  year, lsoa_ses_score1)) %>%
+  group_by(LAD21CD, year, lsoa_ses_score1) %>%
+  summarise(across(.cols = all_of(nonstationary), .fns = ~mean(.x, na.rm = TRUE)), .groups = 'drop') %>%
+  filter(year %in% c(2013, 2019))
+
+lm1 = lm(samhi_index ~ factor(year)*factor(lsoa_ses_score1), data = df_lad)
+summary(lm1)
+
 
 # Other Outputs
 
