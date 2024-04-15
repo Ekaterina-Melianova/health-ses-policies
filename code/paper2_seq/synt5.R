@@ -548,4 +548,6 @@ gc()
 #current time
 Sys.time()
 anova(autoreg_constrained_rest_free_fit_dep_1, covmeans_constrained_rest_free_fit_dep_1)
-
+#setwd to the output folder
+setwd('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2')
+saveRDS(autoreg_constrained_rest_free_fit_dep_1, "autoreg_constrained_rest_free_fit_dep_1.rds")

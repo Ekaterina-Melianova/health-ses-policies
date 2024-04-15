@@ -109,9 +109,9 @@ dvs = c('samhi_index',
 # final dataset - wide format
 
 dep_vec_3 = paste0(rep(dep_vec, each = 3), 1:3)
-#df_lv_1 = lavaan_df(dv = 'samhi_index',
-#                    deprivation_cat = 'lsoa_ses_score1',
-#                    df = df)
+df_lv_1 = lavaan_df(dv = 'samhi_index',
+                    deprivation_cat = 'lsoa_ses_score1',
+                    df = df)
 ##df_lv_1 = as.data.frame(na.omit(df_lv_1))
 #colnames(df_lv_1)
 #df_lv_2 = lavaan_df(dv = 'samhi_index',
@@ -575,20 +575,33 @@ mgc_modelling_outputs = function(lst_constrained){
                   everything())
   
   colnames(gf_pct_coefs_long)[1] = 'Constrained Spending'
-    gf_pct_coefs_long = merge(gf_pct_coefs_long, 
-               anova_all %>% filter(Dynamic == 'Long-Run') %>%
-                 dplyr::select(c(`Constrained Spending`,
-                                 grep('Sig', colnames(anova_all)))),
-               no.dups = T, all = T, sort = F)
-  gf_pct_coefs_long = gf_pct_coefs_long[,c(1:3,8, 4:5,9,6:7,10)]
+  
+  anova_long = anova_all %>% filter(Dynamic == 'Long-Run') %>%
+    dplyr::select(c(`Constrained Spending`,
+                    grep('Sig', colnames(anova_all)),
+                    grep('Chisq diff', colnames(anova_all))))
+  
+  gf_pct_coefs_long = gf_pct_coefs_long %>% left_join(anova_long, by = 'Constrained Spending')
+  
+    #gf_pct_coefs_long = merge(gf_pct_coefs_long, anova_long, by = 'Constrained Spending',
+    #           no.dups = F, all = T, sort = F)
+    
+  gf_pct_coefs_long = gf_pct_coefs_long[,c(1:3,11,8,
+                                           4:5,12,9,
+                                           6:7,13,10)]%>%
+    add_row('Constrained Spending' = 'Long-Run', .before = 1)
   
   gf_models_coefs_long = SubHead(CiSplit(gf_pct_coefs_long),
-                                 sub_head = c('Top', 'Bottom', 'ANOVA Sig'),
-                                 sub_head_add = c('50%', '50%', '',
-                                                  '40%', '40%', '',
-                                                  '30%', '30%', ''),
+                                 sub_head = c('Top', 'Bottom','Chisq diff', 'Chisq Sig'),
+                                 sub_head_add = c('50%', '50%', '', '',
+                                                  '40%', '40%', '', '',
+                                                  '30%', '30%', '', ''),
                                  n = 3,
-                                 colnames = col_gf)
+                                 colnames = c('', 
+                                              'Model 1', '', '', '',
+                                              'Model 2', '', '', '',
+                                              'Model 3', '', '', '')) 
+  
   # short-run table
   gf_pct_coefs_short = gf_pct_coefs %>%
     dplyr::select(id,
@@ -599,24 +612,40 @@ mgc_modelling_outputs = function(lst_constrained){
                   everything())
   
   colnames(gf_pct_coefs_short)[1] = 'Constrained Spending'
-  gf_pct_coefs_short = merge(gf_pct_coefs_short, 
-                            anova_all %>% filter(Dynamic == 'Long-Run') %>%
-                              dplyr::select(c(`Constrained Spending`,
-                                              grep('Sig', colnames(anova_all)))),
-                            no.dups = T, all = T, sort = F)
-  gf_pct_coefs_short = gf_pct_coefs_short[,c(1:3,8, 4:5,9,6:7,10)]
+  
+  anova_short = anova_all %>% filter(Dynamic == 'Short-Run') %>%
+    dplyr::select(c(`Constrained Spending`,
+                    grep('Sig', colnames(anova_all)),
+                    grep('Chisq diff', colnames(anova_all))))
+  
+  gf_pct_coefs_short = gf_pct_coefs_short %>% left_join(anova_long, by = 'Constrained Spending')
+  
+  gf_pct_coefs_short = gf_pct_coefs_short[,c(1:3,11,8,
+                                             4:5,12,9,
+                                             6:7,13,10)]%>%
+    add_row('Constrained Spending' = 'Short-Run', .before = 1)%>%
+    add_row('Constrained Spending' = 'Fit Measures (Scaled)', .before = 8)
   
   gf_models_coefs_short = SubHead(CiSplit(gf_pct_coefs_short),
-                                  sub_head = c('Top', 'Bottom', 'ANOVA Sig'),
-                                  sub_head_add = c('50%', '50%', '',
-                                                   '40%', '40%', '',
-                                                   '30%', '30%', ''),
+                                  sub_head = c('Top', 'Bottom','Chisq diff', 'Chisq Sig'),
+                                  sub_head_add = c('50%', '50%', '', '',
+                                                   '40%', '40%', '', '',
+                                                   '30%', '30%', '', ''),
                                   n = 3,
-                                  colnames = col_gf)
+                                  colnames = c('', 
+                                               'Model 1', '', '', '',
+                                               'Model 2', '', '', '',
+                                               'Model 3', '', '', ''))
   
-  return(list(as.data.frame(gf_models_coefs_short),
-                     as.data.frame(gf_models_coefs_long),
-                     as.data.frame(anova_all)))
+  long_short_tab = rbind(gf_models_coefs_long[1:14,],
+                         gf_models_coefs_short[-1,])
+  
+  
+  
+  return(list(as.data.frame(long_short_tab),
+              as.data.frame(gf_models_coefs_long),
+              as.data.frame(gf_models_coefs_short),
+              as.data.frame(anova_all)))
   
 }
 

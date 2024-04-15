@@ -543,3 +543,6 @@ gc()
 Sys.time()
 anova(all_free_fit_dep_1, growth_constrained_rest_free_fit_dep_1)
 
+#setwd to the output folder
+setwd('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2')
+saveRDS(growth_constrained_rest_free_fit_dep_1, "growth_constrained_rest_free_fit_dep_1.rds")
