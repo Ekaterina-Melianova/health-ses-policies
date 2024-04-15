@@ -536,11 +536,14 @@ all_free_fit_dep_1 = sem(all_free,
                            orthogonal = T, 
                            cluster = 'LAD21CD',
                            group = 'lsoa_ses_score1')
-summary(all_free_fit_dep_1)
-corlv = inspect(all_free_fit_dep_1,"cor.lv")[[1]]
+#summary(all_free_fit_dep_1)
+#corlv = inspect(all_free_fit_dep_1,"cor.lv")[[1]]
 beepr::beep()
 gc()
 #current time
 Sys.time()
+#setwd to the output folder
+setwd('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2')
+saveRDS(all_free_fit_dep_1, "all_free_fit_dep_1.rds")
 
 
