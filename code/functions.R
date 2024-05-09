@@ -581,7 +581,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   if(stationary == F){
     #Reg = gsub("\\s\\S*\\*", " ", Reg)
     Var_Resid = gsub("\\s\\S*\\*", " ", Var_Resid)
-    Cov_Resid = gsub("\\s\\S*\\*", " ", Cov_Resid)
+    #Cov_Resid = gsub("\\s\\S*\\*", " ", Cov_Resid)
   }
   
   # reclpm
@@ -594,6 +594,9 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
     modified_lines = gsub("\\s+", " ", modified_lines)
     modified_lines = paste0("e_", modified_lines)
     Reg = glue(paste(modified_lines, collapse = "\n"))
+    # remove all letters and symbols between "~" and "c(d"
+    Reg = gsub("~[^d]+d", "~c(d", Reg)
+    
     
   }
 

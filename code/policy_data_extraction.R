@@ -199,7 +199,7 @@ length(POLICYDATA[POLICYDATA$LAD == 'n/a'& !is.na(POLICYDATA$LAD),'LAD']) == 0
 POLICYDATA <- POLICYDATA %>% 
   mutate_all(~ifelse(. %in% c("…", '...'), NA, .))  %>%
   mutate_at(vars(general_policies), as.numeric)
-POLICYDATA %<>% rename(LAD19CD = LAD)
+POLICYDATA %<>% dplyr::rename(LAD19CD = LAD)
 
 # population data
 populationData = function(file_name, skip, year){
@@ -609,20 +609,17 @@ test %<>% filter(is.na(NPARK22CD) & !LAD21CD == 'E06000053')
 
 # ----------------------------------------------------------------------
 
-all_policies = c(general_policies,
-                 'social_care_total',
-                 'social_care_net')
 spending_data = policy_df %>% select(year,
                                      class,
                                      LAD21CD = LAD19CD,
                                      name = la,
                                      pop,
-                                     all_of(all_policies)) %>%
-  mutate(across(all_of(all_policies), ~ . * 1000))
+                                     all_of(general_policies)) %>%
+  mutate(across(all_of(general_policies), ~ . * 1000))
 
 # compute incomes
 general_policies_ = c('social_care', general_policies_[1:(length(general_policies_)-1)]) # remove total
-
+nm = general_policies_[1]
 for (nm in general_policies_) {
   cols = grep(paste0("^", nm), names(spending_data), value=TRUE)
   spending_data[paste0(nm, "_inc")] = spending_data[,cols[1]] - spending_data[,cols[2]]

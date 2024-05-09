@@ -5,6 +5,7 @@ library(lme4)
 library(lavaan)
 library(tictoc)
 library(dplyr)
+library(tidyr)
 
 library(RColorBrewer)
 library(ggplot2)
