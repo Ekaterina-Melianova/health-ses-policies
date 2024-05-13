@@ -193,7 +193,7 @@ df$time = df$time-1
 #df$z_mh_rate = scale(df$z_mh_rate)
 df_lv = lavaan_df(dv = 'z_mh_rate',
                   df = df,
-                  deprivation_cat = 'lsoa_ses_score1',
+                  deprivation_cat = 'lsoa_ses_score3',
                   ivs = c('c1', 'c2', 'c3',
                           'social_care_adult', 
                           'healthcare',
@@ -222,11 +222,11 @@ group_free_syntax = RC_GCLM_syntax(model = 'regclm',
                                    control = control_names[-c(3,12)],
                                    multiple  = T)
 group_free_fit_dep_1 = sem(group_free_syntax,
-                           data = df_lv,
+                           data = df_lv[df_lv$lsoa_ses_score2 %in% c(1,2),],
                            estimator = "mlr",
                            orthogonal = T,
                            cluster = 'LAD21CD',
-                           group = 'lsoa_ses_score1')
+                           group = 'lsoa_ses_score2')
 fitmeasures(group_free_fit_dep_1, measures)
 
 gc()
@@ -236,35 +236,41 @@ m_lv = broom::tidy(group_free_fit_dep_1) %>%
   filter(grepl('b_HE|d_HE', label)) %>%
   dplyr::mutate(p.value = round(p.value,3)) %>%
   dplyr::select(label, estimate, p.value, group) 
-res = cbind(m_lv[1:12,], m_lv[61:72,])
-res = cbind(m_lv[1:8,], m_lv[41:48,])
 res = cbind(m_lv[1:14,], m_lv[71:84,])
 
-
-group_free_syntax_ = RC_GCLM_syntax(model = 'regclm',
-                                   cor = F,
-                                   max_time = 6,
-                                   endogeneous = c('HE', 'c1', 'c2', 'c3', 'ot', 'hc', 'as'),
-                                   reverse = c('HE', 'c1', 'c2', 'c3', 'ot', 'hc', 'as'),
-                                   control = control_names[-c(3,12)],
-                                   multiple  = T)
-group_free_fit_dep_1_ = sem(group_free_syntax_,
-                           data = df_lv,
+group_free_fit_dep_2 = sem(group_free_syntax,
+                           data = df_lv[df_lv$lsoa_ses_score2 %in% c(1,2),],
                            estimator = "mlr",
                            orthogonal = T,
                            cluster = 'LAD21CD',
-                           group = 'lsoa_ses_score1')
-fitmeasures(group_free_fit_dep_1_, measures)
+                           group = 'lsoa_ses_score2')
+fitmeasures(group_free_fit_dep_2, measures)
 
 gc()
 beepr::beep()
-summary(group_free_fit_dep_1_, std=T, ci = F)
-m_lv = broom::tidy(group_free_fit_dep_1_) %>%
+summary(group_free_fit_dep_2, std=T, ci = F)
+m_lv = broom::tidy(group_free_fit_dep_2) %>%
   filter(grepl('b_HE|d_HE', label)) %>%
   dplyr::mutate(p.value = round(p.value,3)) %>%
   dplyr::select(label, estimate, p.value, group) 
 res = cbind(m_lv[1:14,], m_lv[71:84,])
 
+group_free_fit_dep_3 = sem(group_free_syntax,
+                           data = df_lv[df_lv$lsoa_ses_score3 %in% c(1,2),],
+                           estimator = "mlr",
+                           orthogonal = T,
+                           cluster = 'LAD21CD',
+                           group = 'lsoa_ses_score3')
+fitmeasures(group_free_fit_dep_3, measures)
+
+gc()
+beepr::beep()
+summary(group_free_fit_dep_2, std=T, ci = F)
+m_lv = broom::tidy(group_free_fit_dep_3) %>%
+  filter(grepl('b_HE|d_HE', label)) %>%
+  dplyr::mutate(p.value = round(p.value,3)) %>%
+  dplyr::select(label, estimate, p.value, group) 
+res = cbind(m_lv[1:14,], m_lv[71:84,])
 
 
 # 3. Regression Table
