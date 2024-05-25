@@ -1,17 +1,20 @@
 
+# Functions
+
 # normalize
 
 normalize = function(x, na.rm = T){
   return((x - min(x)) /(max(x)- min(x)))
 }
 
+
+# vectors with names
 policy_names_6 = c('social_care_adult',
                    'social_care_children',
                    'healthcare',
                    'env',
                    'law_order',
-                   'infrastructure'#,
-                   #'public_health'
+                   'infrastructure'
                    )
 
 control_names = c('public_health_mean',
@@ -47,6 +50,14 @@ parameters = c('Number of Parameters',
                'BIC',
                'Log-Likelihood')
 
+endogeneous = c('HE', # 'Mental Health'
+                'as', # 'Adult Social Care'
+                'cs', # 'Children Social Care'
+                'hc', # 'Healthcare'
+                'en', # 'Environment'
+                'lo', # 'Law and Order'
+                'fr') # 'Infrastructure'
+
 end_new = c('Mental Health',
             'Adult Social Care',
             'Children Social Care',
@@ -54,10 +65,6 @@ end_new = c('Mental Health',
             'Environment',
             'Law and Order', 
             'Infrastructure')
-
-#lad_inc_vars = paste0(policy_names_6[-2], '_inc')
-
-endogeneous = c('HE', 'as', 'cs', 'hc', 'en', 'lo', 'fr')
 
 measures = c('npar',
              'chisq.scaled',
@@ -72,19 +79,6 @@ measures = c('npar',
              'aic',
              'bic',
              'logl')
-# measures = c('npar',
-#              'chisq.robust',
-#              'df.robust',
-#              'cfi.robust',
-#              'tli.robust',
-#              'srmr',
-#              'rmsea.robust',
-#              'rmsea.ci.lower.robust',
-#              'rmsea.ci.upper.robust',
-#              'agfi',
-#              'aic',
-#              'bic',
-#              'logl')
 
 descriptives_names = c('SAMHI Z-Score',
                        'Incapacity Benefits LSOA %',
@@ -138,31 +132,34 @@ nm_out = c('SAMHI',
            'Shire Districts',
            'Metropolitan Districts')
 
+# a vector with the names of random slopes to exclude
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
               'sen ', 'slo ', 'sfr ',
               '\\*sHE', '\\*sas', '\\*scs', '\\*shc',
               '\\*sen', '\\*slo', '\\*sfr')
 
-# Random Effects GCLM lavaan syntax
+# Random Effects GCLM lavaan syntax - main function
 
-RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
-                                          'en', 'lo', 'fr'),
-                          reverse = c('as', 'cs', 'hc',# 'ph',
+RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',
+                                          'en', 'lo', 'fr'), # all endogenous variables
+                          reverse = c('as', 'cs', 'hc', # all endogenous variables except for the main outcome (mental health)
                                       'en', 'lo', 'fr'),
-                          full = T,
-                          no_slopes = NULL,
-                          control = control_names,
-                          max_time = 7,
-                          impulses = T,
-                          past_states = T,
-                          cross = T,
-                          multiple = F,
-                          resid_stationary = T,
-                          stationary = T,
-                          group_equality = NULL,
-                          restricted_pars = NULL,
-                          cor = F,
-                          model = 'regclm'){
+                          full = T, # include reverse effects from health to spending
+                          no_slopes = NULL, # which random slopes to exclude
+                          control = control_names, # control variables
+                          max_time = 7, # maximum time points
+                          impulses = T, # include impulse effects in GCLM (starts from 'd_')
+                          past_states = T, # include the effect of past states in GCLM (starts from 'b_')
+                          cross = T, # include cross-lagged effects or keep only the autoregressive ones
+                          multiple = F, # include multiple group effects
+                          resid_stationary = T, # whether residual variances and covariances should be stationary 
+                          group_equality = NULL, # group equality constraints
+                          restricted_pars = NULL, # restricted parameters
+                          cor = F, # transform covariances to correlations
+                          model = 'regclm' # regclm - random effects GCLM 
+                                           # reclpm - random effects CLPM
+                                                
+                          ){
   require(dplyr)
   n_var = length(endogeneous)
   
@@ -193,47 +190,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
             glue_collapse(" + ") %>%
             glue(., " ~ 0*1")) %>%
     glue_collapse("\n")
-  
-  
-  # Intercept_Slope_Cov = map(endogeneous, ~  glue("i{.x} ~~ covar_i{.x}.s{.x}*s{.x}")) %>%
-  #   glue_collapse("\n")
-  # Slope_Intercept_Cov = map(endogeneous, ~  glue("s{.x} ~~ covar_s{.x}.i{.x}*i{.x}")) %>%
-  #   glue_collapse("\n")
-  
-# covar
 
-  # if(n_var > 1){
-  #   iscov = expand_grid(x = endogeneous,
-  #                        y = endogeneous) %>%
-  #     filter(!x == y) %>%
-  #     mutate(n = rep(1:(n_var-1), n_var)) %>%
-  #     mutate(seq = rep(0:(n_var-1), each = n_var-1)) %>%
-  #     filter(!seq >= n) %>%
-  #     dplyr::select(x, y) %>%
-  #     dplyr::mutate(cov_ii = glue('i{x} ~~ covar_i{x}.i{y}*i{y}'),
-  #                 cov_ss = glue('s{x} ~~ covar_s{x}.s{y}*s{y}'),
-  #                 cov_is = glue('i{x} ~~ covar_i{x}.s{y}*s{y}'),
-  #                 cov_si = glue('s{x} ~~ covar_s{x}.i{y}*i{y}'))
-  # Cov_ii = iscov %>%
-  #   pull(cov_ii) %>%
-  #   glue_collapse("\n")
-  # Cov_ss = iscov %>%
-  #   pull(cov_ss) %>%
-  #   glue_collapse("\n")
-  # Cov_is = iscov %>%
-  #   pull(cov_is) %>%
-  #   glue_collapse("\n")
-  # Cov_si = iscov %>%
-  #   pull(cov_si) %>%
-  #   glue_collapse("\n")
-  # } else {
-  #   Cov_ss = ''
-  #   Cov_ii = ''
-  #   Cov_is = ''
-  #   Cov_si = ''
-  # }
-  # 
-  
   # covar
   
   if(n_var > 1){
@@ -267,9 +224,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   
   if (resid_stationary == T){
       if (multiple == T){
-    #Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ c(evar{.x}{1}, evar{.x}{2})*e_{.x}{1:max_time}")%>%
-    #                  glue_collapse("\n")) %>%
-    #  glue_collapse("\n")
+        
     Var_Resid = map(endogeneous, ~  glue("e_{.x}{1:max_time} ~~ evar{.x}*e_{.x}{1:max_time}")%>%
                       glue_collapse("\n")) %>%
       glue_collapse("\n")
@@ -481,7 +436,7 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
       glue_collapse("\n")
     
     Cor_Rand = rand %>%
-      dplyr::mutate(g = glue("cor_{x}.{y} := covar_{x}.{y} / (sqrt(var_{x}) * sqrt(var_{y}))"))%>%
+      dplyr::mutate(g = glue("cor_{x}.{y} := cov_{x}.{y} / (sqrt(var_{x}) * sqrt(var_{y}))"))%>%
       pull(g)%>%
       glue_collapse("\n")
   } else{
@@ -531,8 +486,6 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   
   # Impulses and Past States
   
-  #Reg = Reg_
-  
   if(past_states == F){
     betas = c()
     for (i in 1:length(endogeneous)){
@@ -578,24 +531,28 @@ RC_GCLM_syntax = function(endogeneous = c('HE', 'as', 'cs', 'hc',# 'ph',
   
   # stationary
   
-  if(stationary == F){
-    #Reg = gsub("\\s\\S*\\*", " ", Reg)
-    Var_Resid = gsub("\\s\\S*\\*", " ", Var_Resid)
-    #Cov_Resid = gsub("\\s\\S*\\*", " ", Cov_Resid)
-  }
+  #if(stationary == F){
+  #  Var_Resid = gsub("\\s\\S*\\*", " ", Var_Resid)
+  #}
   
   # reclpm
-  if(model == 'reclpm'){
+  if(model == 'reclpm' ){
     
     # Split the glue object by line
     Reg_lines <- strsplit(Reg, "\n")[[1]]
     # Remove all terms starting from "b_" and add "e_" in front of each line
-    modified_lines = gsub("b_[^+]+\\+", "", Reg_lines, perl = TRUE)
+    modified_lines = gsub("b_[^+]+", "REMOVED_TERM", Reg_lines, perl = TRUE)
+    #modified_lines = gsub("d_[^+]+", "", modified_lines, perl = TRUE)
+    modified_lines = gsub("REMOVED_TERM\\+ ", " ", modified_lines)
     modified_lines = gsub("\\s+", " ", modified_lines)
     modified_lines = paste0("e_", modified_lines)
     Reg = glue(paste(modified_lines, collapse = "\n"))
     # remove all letters and symbols between "~" and "c(d"
-    Reg = gsub("~[^d]+d", "~c(d", Reg)
+    
+    if (multiple == T){
+      Reg = gsub("~[^d]+d", "~c(d", Reg)
+      }
+   
     
     
   }
@@ -768,7 +725,7 @@ lavaan_df = function(dv,
 }
 
 
-
+# cbind.fill
 cbind.fill <- function(...){
   nm <- list(...) 
   nm <- lapply(nm, as.matrix)
@@ -776,175 +733,6 @@ cbind.fill <- function(...){
   do.call(cbind, lapply(nm, function (x) 
     rbind(x, matrix(, n-nrow(x), ncol(x))))) 
 }
-
-
-###
-library(semptools)
-library(semPlot)
-
-plot_effects = function(models = growth_impulses_pastst_fit,
-                        mod_names = 'growth_impulses_pastst_fit',
-                        rhs_selected = c("HE1",
-                                         "sc1",
-                                         'ho1',
-                                         'nh1',
-                                         'ed1'),
-                        lhs_selected = c("HE2",
-                                         "sc2",
-                                         'ho2',
-                                         'nh2',
-                                         'ed2'),
-                        main_dv_name = 'Mental'){
-  
-  # models as list and naming
-  models = list(models)
-  names(models) = mod_names
-  
-  plot_list = list()
-  
-  # Storing as a list
-  
-  model_number = 0
-  for (m in models){
-    
-    model_number =  model_number + 1 
-    
-    # selecting nodes
-    sorting_vec = c(rbind(rhs_selected, lhs_selected))
-    filtered = semptools::keep_nodes(
-        semPlotModel(m),
-        sorting_vec
-        )
- 
-    # pars
-    par = parameterEstimates(m, standardized=TRUE)  %>%
-      filter(op == '~' & lhs %in% lhs_selected & rhs %in% rhs_selected) %>%
-      filter(!(grepl('ho|nh|ed', lhs) & !(grepl('ho|nh|ed', rhs)&grepl('ho|nh|ed', lhs))))
-    par = paste0(round(par$std.all, 3),
-                 ifelse(par$pvalue < 0.001, '***',
-                        ifelse(par$pvalue <0.01, '**',
-                               ifelse(par$pvalue < 0.05, '*',
-                                      ifelse(par$pvalue < 0.1, 'ǂ', '')))))
-    
-    # remove links from nh, ho to HE - looks cluttered
-    to_cover = filtered@Pars %>% 
-      filter((grepl('ho|nh|ed', rhs) & !(grepl('ho|nh|ed', rhs)&grepl('ho|nh|ed', lhs)))) %>%
-      pull(par)
-    
-    # final list with pars
-    filtered@Pars = filtered@Pars %>% filter(!(par %in% to_cover)) %>%
-      filter(edge == '~>')
-
-    filtered@Vars$manifest = TRUE
-    
-    filtered@Vars$name = filtered@Vars$name[order(match(filtered@Vars$name,
-                                   sorting_vec))]
-    
-    
-    # plotting
-    if (grepl('mgc', names(models)[model_number])){
-      
-      plot_list[[model_number]] = vector('list', length = 2)
-      
-      for (i in 1:2){
-        
-        plot_list[[model_number]][[i]] = semPaths(filtered,
-                                                  whatLabels = "std",
-                                                  edgeLabels = par,
-                                                  sizeMan = 15,
-                                                  sizeMan2 = 13,
-                                                  edge.label.cex = 1.1,
-                                                  label.scale = F,
-                                                  intercepts = F,
-                                                  residuals = F,
-                                                  rotation = 2,
-                                                  curvePivot = TRUE,
-                                                  layout = 'tree',
-                                                  pastel = T,
-                                                  #panelGroups = T,
-                                                  borders = F,
-                                                  edge.color = c('grey', 'pink', 'pink', 
-                                                                 'pink', 'grey', 'grey',
-                                                                 'grey', 'grey'),
-                                                  edge.label.position = 0.4,
-                                                  edge.label.color = c('darkgrey', 'black', 'black', 
-                                                                       'black', 'darkgrey', 'darkgrey',
-                                                                       'darkgrey', 'darkgrey'),
-                                                  edge.label.bg = c('white', 'pink', 'pink', 
-                                                                    'pink', 'white', 'white',
-                                                                    'white', 'white'),
-                                                  nodeLabels = c(main_dv_name, 
-                                                                 main_dv_name,
-                                                                 'Social Care/ \n Public Health',
-                                                                 'Social Care/ \n Public Health',
-                                                                 'Housing/ \n Transport',
-                                                                 'Housing/ \n Transport',
-                                                                 'Environment/ \n Culture/ \n Planning',
-                                                                 'Environment/ \n Culture/ \n Planning'),
-                                                  ask = 'N',
-                                                  edge.width = 2,
-                                                  label.color = c('darkred', 'darkred', 'black', 
-                                                                  'black', 'black', 'black',
-                                                                  'black', 'black'),
-                                                  title = F,
-                                                  include = i
-                                                  
-        ) 
-      }
-      plot_list[[model_number]][[2]] = plot_list[[model_number]][[2]][[2]]
-    }
-    
-    else{
-      plot_list[[model_number]] = semPaths(filtered,
-                                           whatLabels = "std",
-                                           edgeLabels = par,
-                                           sizeMan = 15,
-                                           sizeMan2 = 17,
-                                           edge.label.cex = 1.2,
-                                           label.scale = F,
-                                           intercepts = F,
-                                           residuals = F,
-                                           rotation = 2,
-                                           curvePivot = TRUE,
-                                           layout = 'tree',
-                                           pastel = T,
-                                           borders = F,
-                                           edge.label.position = 0.4,
-                                           edge.color = c('grey', 'grey', 'black', 
-                                                          'black', 'black', 'black',
-                                                          'grey', 'grey', 'grey', 'black'),
-                                           nodeLabels = c('Mental Health', 
-                                                          'Mental Health',
-                                                          'Social Care/ \n Public Health',
-                                                          'Social Care/ \n Public Health',
-                                                          'Housing/ \n Transport',
-                                                          'Housing/ \n Transport',
-                                                          'Environment/ \n Culture/ \n Planning',
-                                                          'Environment/ \n Culture/ \n Planning',
-                                                          'Education',
-                                                          'Education'),
-                                           edge.label.bg = c('white', 'white', 'lightgrey', 
-                                                             'lightgrey', 'lightgrey', 'lightgrey',
-                                                             'white', 'white',
-                                                             'white', 'lightgrey'),
-                                           label.color = c('blue', 'blue', 'black', 
-                                                           'black', 'black', 
-                                                           'black', 'black', 'black',
-                                                           'black', 'black'),
-                                           ask = 'N',
-                                           edge.width = 2,
-                                           title = F
-                                           
-      ) 
-    }
-    
-  }
-  
-  names(plot_list) = names(models)
-  
-  return(plot_list)
-}
-
 
 # Extract coefficients for SEM models
 
@@ -960,6 +748,7 @@ sig_fun = function(x){
   )
 }
 
+# Extract coefficients
 CoefsExtract = function(models = NULL,
                         health = 'HE2',
                         standardized = F,

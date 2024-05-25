@@ -12,14 +12,21 @@ library(lavaan)
 library(data.table)
 library(tidyr)
 library(broom)
+library(semptools)
+library(semPlot)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/code/functions.R')
+## setting directory
+USERNAME = Sys.getenv("USERNAME")
+DIR = '/YandexDisk/PhD Research/health-ses-policies2'
+path = paste0('C:/Users/', USERNAME, DIR)
+setwd(paste0(path, '/data'))
+source(paste0(path, '/code/functions.R'))
 options(max.print=3900)
 
 # pre-processing
 
 # loading the data
-df = readRDS('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
+df = readRDS('df.rds')
 
 # a dataset for descriptive stat
 df_before_scaling = df
@@ -61,27 +68,6 @@ df_lv = lavaan_df(dv = 'samhi_index',
 df_lv = as.data.frame(na.omit(df_lv))
 summary(df_lv)
 
-# saving
-#saveRDS(df_lv, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_lv.RDS')
-#saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/data/df_hlm.RDS')
-
-#par(mfrow=c(2,2))
-# quick dist 
-# hist(df_lv$HE1)
-# hist(df$antidep_rate, breaks = 30)
-# hist(df$samhi_index, breaks = 30)
-# hist(df$z_mh_rate, breaks = 30)
-# hist(df$est_qof_dep, breaks = 30)
-# hist(df$prop_ibesa, breaks = 30)
-# 
-# hist(df$social_care_adult, breaks = 30)
-# hist(df$social_care_children, breaks = 30)
-# hist(df$healthcare, breaks = 30)
-# hist(df$env, breaks = 30)
-# hist(df$law_order, breaks = 30)
-# hist(df$infrastructure, breaks = 30)
-# hist(df$public_health, breaks = 30)
-
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
 # ----------------------------------------------------------------------
@@ -105,7 +91,7 @@ gc()
 # 1. RI-CLPM
 riclpm_syntax = RC_GCLM_syntax(model = 'reclpm',
                                no_slopes = no_slopes,
-                               cor = F, resid_stationary = T)
+                               cor = F)
 riclpm_fit = sem(riclpm_syntax,
                  data = df_lv,
                  estimator = "mlr",
@@ -159,6 +145,8 @@ gc()
 
 m_lv = broom::tidy(rcgclm_fit)
 
+
+# comparing the models
 anova(riclpm_fit, rcgclm_fit)
 anova(only_growth_fit, rcgclm_fit)
 
