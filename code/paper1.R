@@ -14,6 +14,7 @@ library(tidyr)
 library(broom)
 library(semptools)
 library(semPlot)
+options(max.print=3900)
 
 ## setting directory
 USERNAME = Sys.getenv("USERNAME")
@@ -21,7 +22,6 @@ DIR = '/YandexDisk/PhD Research/health-ses-policies2'
 path = paste0('C:/Users/', USERNAME, DIR)
 setwd(paste0(path, '/data'))
 source(paste0(path, '/code/functions.R'))
-options(max.print=3900)
 
 # pre-processing
 

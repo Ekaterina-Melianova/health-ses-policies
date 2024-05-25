@@ -14,14 +14,19 @@ library(ggplot2)
 library(ggpubr)
 library(stargazer)
 
-source('C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies/code/functions.R')
+## setting directory
+USERNAME = Sys.getenv("USERNAME")
+DIR = '/YandexDisk/PhD Research/health-ses-policies2'
+path = paste0('C:/Users/', USERNAME, DIR)
+setwd(paste0(path, '/data'))
+source(paste0(path, '/code/functions.R'))
 
 # load
-spending_data = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/spending_data.csv')[-1]
+spending_data = read.csv('spending_data.csv')[-1]
 names(spending_data) <- gsub("_total", "", names(spending_data))
 
 # def
-deflator = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/Financial/GDP_Deflators_Budget_March_2021_update.xlsx',
+deflator = read_excel('GDP_Deflators_Budget_March_2021_update.xlsx',
                       range = 'H7:I73')
 names(deflator) = c('year', 'def')
 deflator$year = as.numeric(deflator$year)
@@ -35,8 +40,8 @@ spending_data %<>%
   mutate(across(education:other_inc, ~ . /def*100 ))
 
 # Small Area Mental Health Index (SAMHI)
-health_lsoa = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/samhi_21_01_v4.00_2011_2019_LSOA_tall.csv')
-lsoa_lad = read.csv('C:/Users/ru21406/YandexDisk/PhD Research/Data/OA11_LAD21_LSOA11_MSOA11_LEP21_EN_v3.csv')
+health_lsoa = read.csv('samhi_21_01_v4.00_2011_2019_LSOA_tall.csv')
+lsoa_lad = read.csv('OA11_LAD21_LSOA11_MSOA11_LEP21_EN_v3.csv')
 lsoa_lad %<>% dplyr::select(LAD21CD, lsoa11 = LSOA11CD, MSOA11CD)
 lsoa_lad = lsoa_lad %>% distinct()
 health_lsoa %<>% left_join(lsoa_lad, by = "lsoa11")
@@ -76,7 +81,6 @@ summary(df)
 #   dplyr::left_join(dep_lad)
 
 # from the Department for Levelling Up, Housing and Communities
-setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data')
 dep15 = read.csv('imd2015lsoa.csv')
 table(dep15$Indices.of.Deprivation)
 # length(unique(dep15$FeatureCode)) n LSOAs in 2019
@@ -126,7 +130,6 @@ dep15$lsoa_all_score = rowMeans(dep15[, c('inc_dep',
 df %<>% left_join(dep15)
 
 # codes for merging LSOAa with CCGs
-setwd('C:/Users/ru21406/YandexDisk/PhD Research/Data')
 lsoa_to_ccg15 = read.csv('Lower_Layer_Super_Output_Area_(2011)_to_Clinical_15.csv')
 lsoa_to_ccg16 = read.csv('Lower_Layer_Super_Output_Area_(2011)_to_Clinical_16.csv')
 lsoa_to_ccg17 = read.csv('Lower_Layer_Super_Output_Area_(2011)_to_Clinical_17.csv')
@@ -144,7 +147,7 @@ lsoa_to_ccg = list(
   purrr::reduce(rbind)
 
 # from dashboard
-dash = read_excel('C:/Users/ru21406/YandexDisk/PhD Research/Data/CCG-allocations-dashboard-to-2023-24.xlsx',
+dash = read_excel('CCG-allocations-dashboard-to-2023-24.xlsx',
                   sheet = 'Real terms data', range = 'D2:X222')
 dash = dash[,c(1,15:ncol(dash))]
 colnames(dash) = c('CCG', 2013:2019)
@@ -254,7 +257,7 @@ df$SD = ifelse(df$class == 'SD', 1, 0)
 #df = df %>% filter(housing_transport > 0 & environment_planning_cultural > 0 & pub_health_soc_care > 0)
 
 # saving the final df
-saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df.rds')
+saveRDS(df, 'df.rds')
 
 
 
