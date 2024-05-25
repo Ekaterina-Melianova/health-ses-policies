@@ -807,8 +807,8 @@ for (i in seq_along(df_list)) {
 }
 
 # Save the document
-
-print(doc, target = "C:/Users/ru21406/YandexDisk/PhD Research/Literature review/Paper1_tabs.docx")
+setwd(paste0(path, '/output/paper1'))
+print(doc, target = "Paper1_tabs.docx")
 
 
 
@@ -872,7 +872,7 @@ ggarrange(list_plots[[1]],
           ),
           ncol = 3, nrow = 2,
           font.label = list(size = 30), align ='hv')
-ggsave("C:/Users/ru21406/YandexDisk/PhD Research/Literature review/mhealth_lineplots.jpeg",
+ggsave("mhealth_lineplots.jpeg",
        width = 60, height = 40, units = 'cm')
 
 # policies
@@ -892,7 +892,7 @@ ggarrange(list_plots[[6]],
           ncol = 3, nrow = 2,
           font.label = list(size = 30), align ='hv') +
   ylab("Common Y-Axis Label")
-ggsave("C:/Users/ru21406/YandexDisk/PhD Research/Literature review/spending_lineplots.jpeg",
+ggsave("spending_lineplots.jpeg",
        width = 60, height = 40, units = 'cm') 
 
 
