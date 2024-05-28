@@ -17,6 +17,14 @@ policy_names_6 = c('social_care_adult',
                    'infrastructure'
                    )
 
+policy_names_6_ch = c('ca',
+                   'cb',
+                   'cc',
+                   'ot',
+                   #'social_care_adult',
+                   'healthcare'
+)
+
 control_names = c('public_health_mean',
                   'inc_mean',
                   'lsoa_ses_score',
@@ -66,6 +74,14 @@ end_new = c('Mental Health',
             'Law and Order', 
             'Infrastructure')
 
+end_new_ch = c('MH Hospitalisations',
+            'Children Social Care 1',
+            'Children Social Care 2',
+            'Children Social Care 3',
+            'Other Spending',
+            #'Adult Social Care',
+            'Healthcare')
+
 measures = c('npar',
              'chisq.scaled',
              'df.scaled',
@@ -106,6 +122,29 @@ descriptives_names = c('SAMHI Z-Score',
                        'Shire Districts',
                        'Metropolitan Districts')
 
+descriptives_names_ch = c(
+                       'Hospital Admission Z-Score',
+                       
+                       'Children Social Care 1',
+                       'Children Social Care 2',
+                       'Children Social Care 3',
+                       'Other Spending',
+                       #'Adult Social Care',
+                       'Healthcare',
+                       
+                       'Public Health, 7-year mean',
+                       'LTLA Income, 7-year mean',
+                       'IMD (inc. + empl. domains)',
+                       'LSOA Population Size',
+                       'Non-white, LSOA %',
+                       'Females, LSOA %',
+                       'Older, LSOA %',
+                       'N of LSOAs in LTLA',
+                       'Rural, LSOA %',
+                       'London Boroughs',
+                       'Shire Districts',
+                       'Metropolitan Districts')
+
 nm_out = c('SAMHI',
            'Incapacity Benefits',
            'Depression',
@@ -131,6 +170,27 @@ nm_out = c('SAMHI',
            'London Boroughs',
            'Shire Districts',
            'Metropolitan Districts')
+
+nm_out_ch = c('Hospital Admission Z-Score',
+              
+              'Children Social Care 1',
+              'Children Social Care 2',
+              'Children Social Care 3',
+              'Other Spending',
+              #'Adult Social Care',
+              'Healthcare',
+              
+              'Public Health',
+              'LTLA Income',
+              'LSOA Population Size',
+              'Non-white',
+              'Females',
+              'Older',
+              'N of LSOAs in LTLA',
+              'Rural',
+              'London Boroughs',
+              'Shire Districts')
+
 
 # a vector with the names of random slopes to exclude
 no_slopes = c('sHE ', 'sas ', 'scs ', 'shc ',
@@ -1031,15 +1091,16 @@ TableEffects = function(dat = effects_all,
                         section_name_rows = c(1, 8, 14, 20, 27, 34),
                         subsections = T,
                         .section_names = section_names,
-                        fit_measures = NULL) {
+                        fit_measures = NULL,
+                        patterns = c("~HE|HE~#",
+                                     "~as|as~#",
+                                     "~cs|cs~#",
+                                     "~hc|hc~#",
+                                     "~en|en~#",
+                                     "~lo|lo~#",
+                                     "~fr|fr~#")) {
   library(dplyr)
-  patterns = c("~HE|HE~#",
-               "~as|as~#",
-               "~cs|cs~#",
-               "~hc|hc~#",
-               "~en|en~#",
-               "~lo|lo~#",
-               "~fr|fr~#")
+  
   
   dat = dat %>%
     filter(!type %in% c('d_impulse_cov',
