@@ -114,14 +114,14 @@ df_lv_1 = lavaan_df(dv = 'samhi_index',
                     df = df)
 ##df_lv_1 = as.data.frame(na.omit(df_lv_1))
 #colnames(df_lv_1)
-#df_lv_2 = lavaan_df(dv = 'samhi_index',
-#                    deprivation_cat = 'lsoa_ses_score2',
-#                    df = df) %>% 
-#  filter(lsoa_ses_score2 > 0)
-#df_lv_3 = lavaan_df(dv = 'samhi_index',
-#                    deprivation_cat = 'lsoa_ses_score3',
-#                    df = df) %>% 
-#  filter(lsoa_ses_score3 > 0)
+df_lv_2 = lavaan_df(dv = 'samhi_index',
+                    deprivation_cat = 'lsoa_ses_score2',
+                    df = df) %>% 
+  filter(lsoa_ses_score2 > 0)
+df_lv_3 = lavaan_df(dv = 'samhi_index',
+                    deprivation_cat = 'lsoa_ses_score3',
+                    df = df) %>% 
+  filter(lsoa_ses_score3 > 0)
 # ----------------------------------------------------------------------
 # ------------------------------ MODELLING -----------------------------
 # ----------------------------------------------------------------------
@@ -329,55 +329,73 @@ nonstationary = c('samhi_index',
                   'infrastructure')
 vars_used = c(nonstationary, stationary)
 
-df_before_scaling$imd_year = case_when(df_before_scaling$year == 2013 &
-                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_1',
-                                       df_before_scaling$year == 2013 &
-                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_3',
-                                       df_before_scaling$year == 2019 &
-                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_2',
-                                       df_before_scaling$year == 2019 &
-                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_4',
-                                       TRUE ~ 'other')
-table(df_before_scaling$imd_year)
-
-# Z-scores for health
-df_before_scalingZ = df_before_scaling
-for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
-  df_before_scalingZ[, i] = scale(df_before_scaling[, i])
+sumstat_dep = list()
+for (k in 1:length(lsoa_group)){
+  
+  lsoa_ses_score = lsoa_group[k]
+  
+  df_before_scaling$imd_year = case_when(df_before_scaling$year == 2013 &
+                                           df_before_scaling[,lsoa_ses_score] == 1 ~ '_1',
+                                         df_before_scaling$year == 2013 &
+                                           df_before_scaling[,lsoa_ses_score] == 2 ~ '_3',
+                                         df_before_scaling$year == 2019 &
+                                           df_before_scaling[,lsoa_ses_score] == 1 ~ '_2',
+                                         df_before_scaling$year == 2019 &
+                                           df_before_scaling[,lsoa_ses_score] == 2 ~ '_4',
+                                         TRUE ~ 'other')
+  #table(df_before_scaling$imd_year)
+  
+  # Z-scores for health
+  df_before_scalingZ = df_before_scaling
+  for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+    df_before_scalingZ[, i] = scale(df_before_scaling[, i])
+  }
+  
+  sumstat_dep[[k]] = summarize_data(dat = df_before_scalingZ %>%
+                                      filter(!imd_year == 'other'),
+                                    .stationary = stationary[-11],
+                                    group = 'imd_year',
+                                    rownames = nm_out[-c(14,23)],
+                                    quant = F,
+                                    stat = list('Mean' = mean,
+                                                'SD' = sd#,
+                                                #'Q25' = function(x) quantile(x, probs = 0.25),
+                                                #'Q75' = function(x) quantile(x, probs = 0.75)
+                                    )
+  )
+  for (i in c(2,8,15)) {
+    sumstat_dep[[k]] = tibble::add_row(sumstat_dep[[k]], .before = i)
+  }
+  sumstat_dep[[k]] = tibble::add_column(sumstat_dep[[k]], "Var1" = '', .after = 5)
+  sumstat_dep[[k]] = tibble::add_column(sumstat_dep[[k]], "Var2" = '', .after = 10)
+  
+  section_subnames = c('Health Indicators', 'Spending, £ per capita', 'Controls')
+  sumstat_dep[[k]] = sumstat_dep[[k]] %>%
+    dplyr::mutate(across(1, ~replace(.x, is.na(.x), section_subnames))) %>%
+    dplyr::mutate_all(~ ifelse(is.na(.), "", .)) 
 }
 
-sumstat_dep1 = summarize_data(dat = df_before_scalingZ %>% filter(!imd_year == 'other'),
-                              .stationary = stationary[-11],
-                              group = 'imd_year',
-                              rownames = nm_out[-c(14,23)],
-                              quant = F,
-                              stat = list('Mean' = mean,
-                                          'SD' = sd#,
-                                          #'Q25' = function(x) quantile(x, probs = 0.25),
-                                          #'Q75' = function(x) quantile(x, probs = 0.75)
-                                          )
-                              )
-for (i in c(2,8,15)) {
-  sumstat_dep1 = tibble::add_row(sumstat_dep1, .before = i)
-}
-sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var1" = '', .after = 5)
-sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var2" = '', .after = 10)
-
-section_subnames = c('Health Indicators', 'Spending, £ per capita', 'Controls')
-sumstat_dep1 = sumstat_dep1 %>%
-  dplyr::mutate(across(1, ~replace(.x, is.na(.x), section_subnames))) %>%
-  dplyr::mutate_all(~ ifelse(is.na(.), "", .)) 
 
 #colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
-colnames(sumstat_dep1) = c('',
+colnames(sumstat_dep[[1]]) = c('',
                            '2013 Top 50%', '', '2019 Top 50%', '',
                            'SD or Percentage Change Top 50%', 
                            '2013 Bottom 50%', '', '2019 Bottom 50%', '',
                            'SD or Percentage Change Top 50%')
+colnames(sumstat_dep[[2]]) = c('',
+                               '2013 Top 40%', '', '2019 Top 40%', '',
+                               'SD or Percentage Change Top 40%', 
+                               '2013 Bottom 40%', '', '2019 Bottom 40%', '',
+                               'SD or Percentage Change Top 40%')
+colnames(sumstat_dep[[3]]) = c('',
+                               '2013 Top 30%', '', '2019 Top 30%', '',
+                               'SD or Percentage Change Top 30%', 
+                               '2013 Bottom 30%', '', '2019 Bottom 30%', '',
+                               'SD or Percentage Change Top 30%')
 
-quantile(df_before_scaling$SD[df_before_scaling$lsoa_ses_score1==2])
-sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==1])
-sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==2])
+#quantile(df_before_scaling$SD[df_before_scaling$lsoa_ses_score1==2])
+#sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==1])
+#sd(df_before_scaling$nonwhite[df_before_scaling$lsoa_ses_score1==2])
 
 # temporal distance
 df_imd_dist = df_before_scaling %>% 
@@ -710,7 +728,28 @@ beepr::beep()
 
 # # ----------------------------------------------------------------------
 
+cols = c('Top 50%' = "#4A90E2", 
+         'Top 40%' = "#0000CC",
+         'Top 30%' = "#000055",
+         'Bottom 50%' = "#C9302C",
+         'Bottom 40%' = "#8A2525",
+         'Bottom 30%' = "#550000")
+
+cols = c('Top 50%' = "#4A90E2", 
+         'Top 40%' = "#4A90E2",
+         'Top 30%' = "#4A90E2",
+         'Bottom 50%' = "#8A2525",
+         'Bottom 40%' = "#8A2525",
+         'Bottom 30%' = "#8A2525")
+
+linetypes = c('Top 50%' = "dotted", 
+              'Top 40%' = "dashed",
+              'Top 30%' = "solid",
+              'Bottom 50%' = "dotted",
+              'Bottom 40%' = "dashed",
+              'Bottom 30%' = "solid")
 library(ggpubr)
+
 vars_original_names = c('samhi_index',
                         'prop_ibesa',
                         'antidep_rate',
@@ -744,20 +783,20 @@ for (i in lsoa_group) {
   num = as.numeric(unlist(str_extract_all(i, "\\d+")))
   if (num == 1){
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 50%',
                                            'Bottom 50%')))
     
   } else if(num == 2) {
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 40%',
                                            'Bottom 40%')))
   }else if(num == 3) {
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 30%',
                                            'Bottom 30%')))
@@ -771,12 +810,12 @@ n = 0
 for (j in lsoa_group){
   n = n + 1
   list_panel[[n]] = df_plot %>% 
-    group_by(year, !!sym(j)) %>%
+    group_by(LAD21CD, year, !!sym(j)) %>%
     dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE))) %>%
     pivot_longer(cols = samhi_index:infrastructure) %>%
     ungroup() %>% dplyr::rename(dep_colour = !!sym(j)) %>%
-    mutate(dep_cat = sub('[[:digit:]]+', '', sym(j)))%>%
-    mutate(dep_linetype = j)
+    dplyr::mutate(dep_cat = sub('[[:digit:]]+', '', sym(j)))%>%
+    dplyr::mutate(dep_linetype = j)
 }
 
 panel_df = do.call(rbind.data.frame, list_panel) %>% 
@@ -785,49 +824,30 @@ panel_df = do.call(rbind.data.frame, list_panel) %>%
 panel_df$name = factor(panel_df$name,
                        levels = vars_original_names,
                        labels = nm_out[1:11])
-#panel_df %<>% filter(name %in% 'SAMHI')
-
-cols = c('Top 50%' = "#4A90E2", 
-         'Top 40%' = "#0000CC",
-         'Top 30%' = "#000055",
-         'Bottom 50%' = "#C9302C",
-         'Bottom 40%' = "#8A2525",
-         'Bottom 30%' = "#550000")
-
-cols = c('Top 50%' = "#4A90E2", 
-         'Top 40%' = "#4A90E2",
-         'Top 30%' = "#4A90E2",
-         'Bottom 50%' = "#8A2525",
-         'Bottom 40%' = "#8A2525",
-         'Bottom 30%' = "#8A2525")
-
-linetypes = c('Top 50%' = "dotted", 
-         'Top 40%' = "dashed",
-         'Top 30%' = "solid",
-         'Bottom 50%' = "dotted",
-         'Bottom 40%' = "dashed",
-         'Bottom 30%' = "solid")
-
 panel_df %>%
-  filter(name %in% nm_out[1:5])  %>%
-  ggplot(aes(year, value, colour = dep_colour, linetype = dep_colour)) +
+  dplyr::filter(name %in% nm_out[1:5])   %>%
+  ggplot(aes(year, value, 
+             colour = factor(dep_colour),
+             linetype = factor(dep_colour))) +
   scale_x_continuous(name = NULL, 
                      breaks = 2013:2019)+ 
-  scale_y_continuous(name = 'Z-Standardised Scores', limits = c(-1.5, 1.5)) + 
   theme(axis.text = element_text(size = 24)) +
+  facet_wrap(~ name, scales = 'free_x') +
   geom_smooth(method = loess,
               linewidth = 0.5,
               se = T,
               formula = y ~ x,
               level = 0.9,
-              fill = 'lightgrey') +
+              fill = 'lightgrey')  +
   scale_color_manual(values = cols) +
   scale_linetype_manual(values = linetypes) +
-  facet_wrap(~ name, scales = 'free') +
   theme_pubclean()+ 
   theme(axis.title.x = element_text(size = 24),
         legend.title = element_blank(),
-        legend.position = 'bottom') #+ 
+        legend.position = 'bottom') +
+  scale_y_continuous(name = 'Z-Standardised Scores'#,
+                     #limits = c(-2, 2)
+                     ) #+ 
  #scale_fill_manual(values = c(rep("#0072B2", 3), rep("#CC79A7", 3))) +
  #scale_colour_manual(values = c(rep("#0072B2", 3), rep("#CC79A7", 3)))
 ggsave("C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/output/paper2/mhealth_smoothplots.svg",

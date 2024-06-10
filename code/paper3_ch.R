@@ -42,10 +42,19 @@ df = df %>% filter(year > 2013) %>%
                         dplyr::select(LAD21CD,year, all_of(policy_names_ch)), by = c('LAD21CD', 'year'))
 
 ## collapse some categories
+# c1s Sure_start
+# c2s Children_Looked_After
+# c3s Other_children_and_families_services
+# c4s Family_Support_Services
+# c5s Youth_Justice
+# c6s Safeguarding_children_and_young_people_services
+# c7s Asylum_Seekers
+# c8s Services_for_young_people
+
 df %<>%
-  dplyr::mutate(ca = c2s, 
-                cb = c6s + c8s,
-                cc = c1s + c3s + c4s + c5s + c7s,
+  dplyr::mutate(ca = c2s, # LAC
+                cb = c6s + c8s, # safeguarding
+                cc = c1s + c3s + c4s + c5s + c7s, # preventative
                 ot = law_order + infrastructure + env + social_care_adult
                 )
 
@@ -377,24 +386,29 @@ nonstationary = c('z_mh_rate',
                   'healthcare')
 vars_used = c(nonstationary, stationary)
 
-df_before_scaling$imd_year = case_when(df_before_scaling$year == 2014 &
-                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_1',
-                                       df_before_scaling$year == 2014 &
-                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_3',
-                                       df_before_scaling$year == 2019 &
-                                         df_before_scaling$lsoa_ses_score1 == 1 ~ '_2',
-                                       df_before_scaling$year == 2019 &
-                                         df_before_scaling$lsoa_ses_score1 == 2 ~ '_4',
-                                       TRUE ~ 'other')
-table(df_before_scaling$imd_year)
-
-# Z-scores for health
-df_before_scalingZ = df_before_scaling
-#for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
-#  df_before_scalingZ[, i] = scale(df_before_scaling[, i])
-#}
-
-sumstat_dep1 = summarize_data(dat = df_before_scalingZ %>% filter(!imd_year == 'other'),
+sumstat_dep = list()
+for (k in 1:length(lsoa_group)){
+  
+  lsoa_ses_score = lsoa_group[k]
+  
+  df_before_scaling$imd_year = case_when(df_before_scaling$year == 2014 &
+                                           df_before_scaling[,lsoa_ses_score] == 1 ~ '_1',
+                                         df_before_scaling$year == 2014 &
+                                           df_before_scaling[,lsoa_ses_score] == 2 ~ '_3',
+                                         df_before_scaling$year == 2019 &
+                                           df_before_scaling[,lsoa_ses_score] == 1 ~ '_2',
+                                         df_before_scaling$year == 2019 &
+                                           df_before_scaling[,lsoa_ses_score] == 2 ~ '_4',
+                                         TRUE ~ 'other')
+  #table(df_before_scaling$imd_year)
+  
+  # Z-scores for health
+  df_before_scalingZ = df_before_scaling
+  for (i in c("antidep_rate", "est_qof_dep", "prop_ibesa")){
+    df_before_scalingZ[, i] = scale(df_before_scaling[, i])
+  }
+  sumstat_dep[[k]] = summarize_data(dat = df_before_scalingZ %>% 
+                                      filter(!imd_year == 'other'),
                               .stationary = stationary[-11],
                               group = 'imd_year',
                               rownames = nm_out_ch,
@@ -406,18 +420,20 @@ sumstat_dep1 = summarize_data(dat = df_before_scalingZ %>% filter(!imd_year == '
                               )
 )
 for (i in c(2, 4, 10)) {
-  sumstat_dep1 = tibble::add_row(sumstat_dep1, .before = i)
+  sumstat_dep[[k]] = tibble::add_row(sumstat_dep[[k]], .before = i)
 }
-sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var1" = '', .after = 5)
-sumstat_dep1 = tibble::add_column(sumstat_dep1, "Var2" = '', .after = 10)
+sumstat_dep[[k]] = tibble::add_column(sumstat_dep[[k]], "Var1" = '', .after = 5)
+sumstat_dep[[k]] = tibble::add_column(sumstat_dep[[k]], "Var2" = '', .after = 10)
 
 section_subnames = c('Health Indicators', 'Spending, £ per capita', 'Controls')
-sumstat_dep1 = sumstat_dep1 %>%
+sumstat_dep[[k]] = sumstat_dep[[k]] %>%
   dplyr::mutate(across(1, ~replace(.x, is.na(.x), section_subnames))) %>%
   dplyr::mutate_all(~ ifelse(is.na(.), "", .)) 
 
-#colnames(sumstat_dep1) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
-colnames(sumstat_dep1) = c('',
+}
+
+#colnames(sumstat_dep[[1]]) = c('', 'Top 50%', '', '', 'Bottom 50%', '', '')
+colnames(sumstat_dep[[1]]) = c('',
                            '2014 Top 50%', '', '2019 Top 50%', '',
                            'SD or Percentage Change Top 50%', 
                            '2014 Bottom 50%', '', '2019 Bottom 50%', '',
@@ -751,20 +767,20 @@ for (i in lsoa_group) {
   num = as.numeric(unlist(str_extract_all(i, "\\d+")))
   if (num == 1){
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 50%',
                                            'Bottom 50%')))
     
   } else if(num == 2) {
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 40%',
                                            'Bottom 40%')))
   }else if(num == 3) {
     df_plot <- df_plot %>%
-      mutate(!!sym(i) := factor(!!sym(i),
+      dplyr::mutate(!!sym(i) := factor(!!sym(i),
                                 levels = 1:2,
                                 labels = c('Top 30%',
                                            'Bottom 30%')))
@@ -778,20 +794,24 @@ n = 0
 for (j in lsoa_group){
   n = n + 1
   list_panel[[n]] = df_plot %>% 
-    group_by(year, !!sym(j)) %>%
+    group_by(LAD21CD, year, !!sym(j)) %>%
     dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE))) %>%
     pivot_longer(cols = z_mh_rate:cc) %>%
     ungroup() %>% dplyr::rename(dep_colour = !!sym(j)) %>%
-    mutate(dep_cat = sub('[[:digit:]]+', '', sym(j)))%>%
-    mutate(dep_linetype = j)
+    dplyr::mutate(dep_cat = sub('[[:digit:]]+', '', sym(j)))%>%
+    dplyr::mutate(dep_linetype = j)
 }
 
 panel_df = do.call(rbind.data.frame, list_panel) %>% 
   filter(!is.na(dep_colour))
 
+labels = c('MH Hospitalisations',
+           'Children Looked After',
+           'Safeguarding',
+           'Preventative')
 panel_df$name = factor(panel_df$name,
                        levels = vars_original_names,
-                       labels = vars_original_names)
+                       labels = labels)
 #panel_df %<>% filter(name %in% 'SAMHI')
 
 cols = c('Top 50%' = "#4A90E2", 
@@ -817,64 +837,130 @@ linetypes = c('Top 50%' = "dotted",
 
 # Spending comparison 
 panel_df$dep_colour = as.factor(panel_df$dep_colour)
-panel_df  %>% 
-  filter(name %in% c('z_mh_rate', 'ca', 'cb', 'cc')) %>%
-  ggplot(aes(year, value, colour = dep_colour, linetype = dep_colour)) +
-  scale_x_continuous(name = NULL, 
-                     breaks = 2014:2019)+ 
-  scale_y_continuous(name = 'Spending, £ per capita'#, limits = c(100, 1400)
-  ) + 
-  theme(axis.text = element_text(size = 24)) +
-  facet_wrap(~ name, scales = 'free')   +
-  geom_smooth(method = loess,
-              linewidth = 0.5,
-              se = T,
-              formula = y ~ x,
-              level = 0.9,
-              fill = 'lightgrey')+
-  theme_pubclean() +
-  # add lines
-  #geom_line(aes(group = LAD21CD), color = "lightblue") +
-  scale_color_manual(values = cols) +
-  scale_linetype_manual(values = linetypes)  + 
-  theme(axis.title.x = element_text(size = 24),
-        legend.title = element_blank(),
-        legend.position = 'bottom')
+panel_df = as.data.frame(panel_df)
+panel_df$value = as.numeric(panel_df$value)
 
-###
-all_vars = c('z_mh_rate',
-             'ca', 'cb', 'cc')
-panel_df = df_before_scaling %>%
-  group_by(LAD21CD, year) %>%
-  dplyr::summarise(across(all_of(all_vars), ~ mean(.x, na.rm = TRUE)))
-panel = panel_data(panel_df, id = LAD21CD, wave = year)
+dt = panel_df %>% 
+  filter(name %in% labels[1])
+
+# MH hosp separately
+plot_smooth <- 
+  ggplot(data = dt, aes(x = year, y = value, colour = dep_colour)) +
+  geom_smooth(se = T, method = "loess", level = 0.9, span=0.3, size = .75) + # I'm lowering the span here so that the lines are a bit wigglier. This will make the demo clearer later on.
+  scale_color_manual(values = cols) 
+df_preds <- ggplot_build(plot_smooth)[["data"]][[1]] ## where the dataframe is located
+new_year <- df_preds %>% 
+  distinct(x) %>%
+  rename("year" = x)
+
+loess_fit = panel_df %>% 
+  filter(name %in% labels[1]) %>% 
+  group_by(dep_colour) %>%
+  do({
+    loess_model = loess(value ~ year, data = ., level = 0.9, normalize = FALSE, span=0.3, size = .75)
+    fit = predict(loess_model, se = TRUE, newdata = new_year)
+    data.frame(year = new_year, fit = fit$fit, se = fit$se.fit)
+  })
+
+hosp = 
+  ggplot() +
+  geom_line(data = loess_fit, aes(y = fit,
+                                  x = year,
+                                  colour = dep_colour,
+                                  linetype = dep_colour), linewidth = 1.5) +
+  geom_ribbon(data = loess_fit, aes(ymin = fit - se,
+                                    ymax = fit + se,
+                                    y = fit,
+                                    x = year,
+                                    linetype = dep_colour),
+              alpha = 0.2, color = NA, fill = 'lightgrey') +
+  scale_y_continuous(name = 'Z-scores', limits = c(-1.5,1.5)) +
+  scale_x_continuous(name = NULL, breaks = 2014:2019) +
+  theme_pubclean() +
+  scale_color_manual(values = cols) +
+  # scale_fill_manual(values = cols)+
+  scale_linetype_manual(values = linetypes) +
+  theme(axis.text = element_text(size = 28)) +
+  theme(axis.title = element_text(size = 28),
+        legend.title = element_blank(),
+        #legend.position = 'none',
+        legend.text=element_text(size=30),
+        legend.key.size = unit(3, "cm")
+  
+)
 
 list_plots = list()
-for (i in 1:length(all_vars)){
-  list_plots[[i]] = panel  %>% 
-    ggplot(aes(year, !!sym(all_vars[i]))) +
-    scale_x_continuous(name = NULL, 
-                       breaks = 2013:2019)+ 
-    scale_y_continuous(name = 'Spending, £ per capita')+
-    geom_line(aes(group = LAD21CD), color = "lightblue") +
-    geom_smooth(method = loess, se = F, fullrange = T, color="darkred") +
-    theme_pubclean() + 
-    theme(axis.text = element_text(size = 24)) + 
-    theme(axis.title.y = element_text(size = 24)) 
+for (i in 1:length(labels[2:4])){
+  #list_plots[[i]] = panel_df %>% 
+  #  filter(name %in% labels[2:4][i]) %>%
+  #  ggplot(aes(year, value, 
+  #             colour = dep_colour, 
+  #             linetype = dep_colour)) +
+  #  scale_x_continuous(name = NULL, 
+  #                     breaks = 2014:2019)+ 
+  #  scale_y_continuous(name = 'Spending, £ per capita'#, limits = c(30, 150)
+  #  ) +
+  #  theme(axis.text = element_text(size = 24))  +
+  #  geom_point() +
+  #  geom_smooth(span=0.8)   +
+  #  theme_pubclean() +
+  #  scale_color_manual(values = cols) +
+  #  scale_linetype_manual(values = linetypes)  + 
+  #  theme(axis.title.x = element_text(size = 24),
+  #        legend.title = element_blank(),
+  #        legend.position = 'none') 
+  #
+  # Calculate LOESS smoothed values and standard errors
+  loess_fit = panel_df %>% 
+    filter(name %in% labels[2:4][i]) %>% 
+    group_by(dep_colour) %>%
+    do({
+      loess_model = loess(value ~ year, data = ., level = 0.9, normalize = FALSE, span=0.3, size = .75)
+      fit = predict(loess_model, se = TRUE, newdata = new_year)
+      data.frame(year = new_year, fit = fit$fit, se = fit$se.fit)
+    })
+  
+  # Create the plot
+  list_plots[[i]] = ggplot(loess_fit) +
+    geom_line(aes(y = fit,
+                  x = year,
+                  colour = dep_colour, 
+                  linetype = dep_colour), linewidth = 1.5) +
+    geom_ribbon(aes(ymin = fit - se,
+                    ymax = fit + se,
+                    y = fit,
+                    x = year,  
+                    linetype = dep_colour), 
+                alpha = 0.2, color = NA, fill = 'grey')  +
+    scale_y_continuous(name = 'Spending, £ per capita', limits = c(30, 150)) +
+    scale_x_continuous(name = NULL, breaks = 2014:2019) +
+    scale_color_manual(values = cols) +
+    scale_linetype_manual(values = linetypes)  +
+    theme_pubclean() +
+    theme(axis.text = element_text(size = 28)) +
+    theme(axis.title = element_text(size = 28),
+          legend.title = element_blank(),
+          #legend.position = 'none',
+          legend.text=element_text(size=30),
+          legend.key.size = unit(3, "cm")
+          )
 }
 
 # policies
-ggarrange(list_plots[[1]],
+ggarrange(hosp,
+          list_plots[[1]],
           list_plots[[2]],
           list_plots[[3]],
-          list_plots[[4]],
-          #labels = c('Adult Social Care',
-          #           'Children Social Care',
-          #           'Healthcare'          ),
-          ncol = 4, nrow = 1,
-          font.label = list(size = 30), align ='hv') +
-  ylab("Common Y-Axis Label")
-
-
-
+          labels = c('MH Hospitalisation Rate',
+                     'Children Looked After Services',
+                     'Safeguarding Services',
+                     'Preventative Services'),
+          ncol = 2, nrow = 2,
+          font.label = list(size = 30), align ='hv',
+          legend = 'bottom',
+          common.legend = T)
+setwd(paste0(path, "/output/paper3"))
+ggsave("MH_CSC_spending_lineplots.jpeg",
+       width = 50, height = 40, units = 'cm') 
+# Calculate LOESS smoothed values and standard errors
 
