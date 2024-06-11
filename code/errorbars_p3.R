@@ -34,7 +34,7 @@ p3$significant = ifelse((p3$lower > 0 & p3$upper > 0)| (p3$lower < 0 & p3$upper 
 p3$time = ifelse(p3$time == 'long', 'Long-Run', 'Short-Run')
 ##
 p3$errorbar_linetype <- ifelse(p3$significant, "solid", "dashed")
-vec_colors <- c( "aquamarine3", "lightcoral", "deepskyblue3")
+vec_colors <- c( "#4A90E2", "lightcoral")
 p3$points_fill <- ifelse(p3$significant==F & p3$cat == 'bottom', 'white',
                       ifelse(p3$significant & p3$cat == 'bottom', vec_colors[2],
                              ifelse(p3$significant==F & p3$cat == 'top', 'white',vec_colors[1])))
@@ -112,7 +112,7 @@ combined_p3 = ggarrange(p3_plot_long,
                            common.legend = T, legend = "bottom")  
 
 combined_p3 = annotate_figure(combined_p3, 
-                                  bottom = text_grob("Standard Deviation Change in MH Hospitalisations from a 10% Increase in Spending", 
+                                  bottom = text_grob("Standard Deviation Change in MH Hospitalisation Rate from a 10% Increase in Spending", 
                                                      color = "black",
                                                      size = 30,
                                                      vjust = -0.5,

@@ -34,7 +34,7 @@ p2$significant = ifelse((p2$lower > 0 & p2$upper > 0)| (p2$lower < 0 & p2$upper 
 p2$time = ifelse(p2$time == 'long', 'Long-Run', 'Short-Run')
 ##
 p2$errorbar_linetype <- ifelse(p2$significant, "solid", "dashed")
-vec_colors <- c( "aquamarine3", "lightcoral", "deepskyblue3")
+vec_colors <- c( "#4A90E2", "lightcoral")
 p2$points_fill <- ifelse(p2$significant==F & p2$cat == 'bottom', 'white',
                          ifelse(p2$significant & p2$cat == 'bottom', vec_colors[2],
                                 ifelse(p2$significant==F & p2$cat == 'top', 'white',vec_colors[1])))
@@ -166,7 +166,7 @@ hosp_combined_p2 = ggarrange(list_plots_long[[3]],
                               common.legend = T, legend = "bottom")  
 
 hosp_combined_p2 = annotate_figure(hosp_combined_p2, 
-                                    bottom = text_grob("Standard Deviation Change in MH Hospitalisations from a 10% Increase in Spending", 
+                                    bottom = text_grob("Standard Deviation Change in MH Hospitalisation Rate from a 10% Increase in Spending", 
                                                        color = "black",
                                                        size = 25,
                                                        vjust = -0.5,
