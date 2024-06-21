@@ -78,6 +78,22 @@ df %<>%
 
 
 # outliers
+#hist(df$ca)
+#hist(df$cb)
+#hist(df$cc)
+#summary(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')))
+#hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
+#hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
+#hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
+
+# suspicious "ones" as spending values
+outliers_df = df %>% filter(LAD21CD %in% c('E06000039'#, 'E08000028'
+                                           )
+                            ) %>% 
+  dplyr::select(c('name', 'year', 'LAD21CD', 
+           paste0(policy_names_ch))) %>% distinct()
+
+# remove outliers
 df = df %>% filter(!LAD21CD %in% c('E06000039', 'E08000028'))
 
 ##
@@ -186,6 +202,8 @@ df_lv_1 = lavaan_df(dv = 'z_mh_rate',
                     ivs = ivs,
                     ivs_map = ivs_map,
                     max_time = 6)
+table(df$time)
+length(table(df_lv_1$LAD21CD))
 
 df_lv_2 = lavaan_df(dv = 'z_mh_rate',
                     deprivation_cat = 'lsoa_ses_score2',

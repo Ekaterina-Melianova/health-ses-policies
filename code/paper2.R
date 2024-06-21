@@ -97,6 +97,8 @@ for (i in c(policy_names_6,
 # flip the sign
 df = df %>%
   mutate_at(vars(all_of(health_vars)), ~ -.)
+# save as rds
+#saveRDS(df, 'C:/Users/ru21406/YandexDisk/PhD Research/health-ses-policies2/data/df_map.rds')
 
 # key vectors with names
 lsoa_group = c('lsoa_ses_score1', 'lsoa_ses_score2', 'lsoa_ses_score3')
