@@ -35,6 +35,11 @@ p1$name = factor(p1$name, levels = rev(c('Adult Social Care',
                                          'Environment',
                                          'Law & Order',
                                          'Infrastructure')))
+p1$var = factor(p1$var, levels = c('samhi',
+                                   'ibesa',
+                                   'dep',
+                                   'anti',
+                                   'hosp'))
 
 setwd(paste0(path, "/output/paper1"))  
 
