@@ -14,6 +14,7 @@ library(tidyr)
 library(broom)
 library(semptools)
 library(semPlot)
+library(tictoc)
 options(max.print=3900)
 
 ## setting directory
@@ -649,6 +650,14 @@ for (i in policy_names_6){
                    )
   
 }
+
+# 10% in absolute terms
+abs_policy = c()
+for (i in policy_names_6){
+  abs_policy = c(abs_policy, 0.1*mean(df_before_scaling[,i]))
+}
+round(abs_policy, 2)
+
 id_ratio_policy = c("HE~as", "HE~cs", "HE~hc", "HE~en", "HE~lo", "HE~fr")
 ratio_df = cbind.data.frame('id' = id_ratio_policy, 'ratio' = ratio_policy)
 

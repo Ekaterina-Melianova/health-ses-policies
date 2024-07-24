@@ -9,7 +9,7 @@ library(IMD)
 library(glue)
 library(tidyverse)
 library(lavaan)
-library(semTable)
+#library(semTable)
 library(viridis)
 library(ggplot2)
 library(data.table)
@@ -68,7 +68,7 @@ df %<>%
 policy_names_ch = c(policy_names_ch,'ot',
                     policy_names_6[-2])
 
-# replace negative values with 0
+# replace negative values with 1
 df %<>%
   dplyr::mutate(across(all_of(policy_names_ch), ~ ifelse(. < 1, 1, .)))
 
@@ -83,16 +83,13 @@ df %<>%
 #hist(df$cc)
 #summary(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')))
 #hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
-#hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
-#hist(df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% pull(ca))
 
-# suspicious "ones" as spending values
-outliers_df = df %>% filter(LAD21CD %in% c('E06000039'#, 'E08000028'
-                                           )
-                            ) %>% 
+outliers_df = df %>% filter(ca==1| cb==1| cc==1) %>% 
   dplyr::select(c('name', 'year', 'LAD21CD', 
            paste0(policy_names_ch))) %>% distinct()
-
+outliers_df = df %>% filter(LAD21CD %in% c('E06000039', 'E08000028')) %>% 
+  dplyr::select(c('name', 'year', 'LAD21CD', 
+                  paste0(policy_names_ch))) %>% distinct()
 # remove outliers
 df = df %>% filter(!LAD21CD %in% c('E06000039', 'E08000028'))
 
@@ -464,6 +461,16 @@ section_names = c('Autoregressive Effects',
                   'Cross-Lagged Effects: Mental Health -> Spending',
                   'Cross-Lagged Effects: Spending -> Mental Health',
                   'Fit Measures (Scaled)')
+
+
+# 10% in absolute terms
+abs_policy = c()
+df_before_scaling = as.data.frame(df_before_scaling)
+for (i in policy_names_6_ch){
+  abs_policy = c(abs_policy, 0.1*mean(df_before_scaling[,i]))
+}
+round(abs_policy, 2)
+
 
 # main summary function
 mgc_modelling_outputs = function(lst_constrained){
